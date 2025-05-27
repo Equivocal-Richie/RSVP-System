@@ -61,14 +61,19 @@ export interface ReservationData {
   updatedAt?: TimestampString;
 }
 
+export type EmailStatus = 'queued' | 'sent' | 'failed' | 'delivered' | 'opened' | 'clicked' | 'bounced';
+
 export interface EmailLogData {
   id: string; // Firestore document ID
-  invitationId: string; // or uniqueToken
+  invitationId: string; 
   eventId: string;
   emailAddress: string;
-  sentAt: TimestampString; // from Firestore Timestamp
-  status: 'sent' | 'failed' | 'bounced' | 'queued';
+  sentAt: TimestampString | null; // from Firestore Timestamp, null if queued/failed before sending
+  status: EmailStatus;
+  brevoMessageId?: string; // Optional: To store Brevo's message ID for tracking
+  errorMessage?: string; // Optional: For logging errors from Brevo
   createdAt?: TimestampString;
+  // No updatedAt for email logs, typically immutable after creation or final status update
 }
 
 export interface RsvpStats {
@@ -79,3 +84,4 @@ export interface RsvpStats {
   totalSeats: number; // 0 or -1 means unlimited
   availableSeats: number; // Meaningful only if totalSeats > 0
 }
+

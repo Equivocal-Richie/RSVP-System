@@ -1,6 +1,6 @@
 
 import { db, FieldValue, Timestamp, timestampToIsoString, convertTimestampsInObj } from './firebaseAdmin';
-import type { EventData, InvitationData, RsvpStats, ReservationData, EmailLogData, RsvpStatus, TimestampString, EventMood, GuestInput } from '@/types';
+import type { EventData, InvitationData, RsvpStats, ReservationData, EmailLogData, RsvpStatus, TimestampString, EventMood, GuestInput, EmailStatus } from '@/types';
 import { randomUUID } from 'crypto';
 
 
@@ -112,7 +112,7 @@ export async function getEventById(id: string): Promise<EventData | null> {
     const clientEventData: EventData = {
         id: docSnap.id,
         name: firestoreData.name,
-        date: timestampToIsoString(firestoreData.date as Timestamp)!, // Ensure date is converted from Timestamp
+        date: timestampToIsoString(firestoreData.date as Timestamp)!, 
         time: firestoreData.time,
         location: firestoreData.location,
         description: firestoreData.description,
@@ -162,13 +162,28 @@ export async function createInvitations(eventId: string, guests: GuestInput[]): 
         createdAt: new Date().toISOString(), 
         updatedAt: new Date().toISOString(),
         rsvpAt: null,
-        visited: false,
+        visited: false, // Ensure visited is part of the returned object immediately
     });
   }
 
   try {
     await batch.commit();
-    return createdInvitations.map(inv => convertTimestampsInObj(inv)); 
+    // Fetch the created invitations to get server-generated timestamps
+    const fetchedInvitations: InvitationData[] = [];
+    for (const guestData of createdInvitations) { // Use the temporary client-side createdInvitations to find docs
+        // This is a simplification. In a real scenario, you might query by a batch ID or fetch docs individually if IDs are known.
+        // For now, we'll assume the client-side constructed object is good enough for immediate return if timestamps are handled by convertTimestampsInObj.
+        // To get actual server timestamps, you'd need to re-fetch.
+        // This example assumes the data structure is largely correct and relies on `convertTimestampsInObj` for any server-generated TS.
+         const docSnap = await db.collection(INVITATIONS_COLLECTION).doc(guestData.id).get();
+         if (docSnap.exists) {
+            fetchedInvitations.push(convertTimestampsInObj({ id: docSnap.id, ...docSnap.data() } as InvitationData));
+         } else {
+            // Fallback to the initially constructed object if fetch fails (less ideal)
+            fetchedInvitations.push(convertTimestampsInObj(guestData));
+         }
+    }
+    return fetchedInvitations; 
   } catch (error) {
     console.error("Error creating invitations in batch:", error);
     throw error; 
@@ -408,20 +423,14 @@ export async function createReservation(
 
 // --- Email Log Functions ---
 export async function createEmailLog(
-  invitationId: string, 
-  eventId: string,
-  emailAddress: string,
-  status: 'sent' | 'failed' | 'bounced' | 'queued'
+  logEntry: Omit<EmailLogData, 'id' | 'createdAt' | 'sentAt'> & { sentAt?: any } // sentAt can be FieldValue or null
 ): Promise<EmailLogData | null> {
   try {
     const newLogRef = db.collection(EMAIL_LOGS_COLLECTION).doc();
     const logDataForDb = {
+      ...logEntry,
       id: newLogRef.id,
-      invitationId,
-      eventId,
-      emailAddress,
-      sentAt: FieldValue.serverTimestamp(),
-      status,
+      sentAt: logEntry.sentAt === null ? null : (logEntry.sentAt || FieldValue.serverTimestamp()), // Allow explicit null or default to server TS
       createdAt: FieldValue.serverTimestamp(), 
     };
     await newLogRef.set(logDataForDb);
@@ -434,7 +443,8 @@ export async function createEmailLog(
         ...fetchedData 
     } as EmailLogData); 
   } catch (error) {
-    console.error(`Error creating email log for invitation ${invitationId}:`, error);
+    console.error(`Error creating email log for invitation ${logEntry.invitationId}:`, error);
     return null;
   }
 }
+

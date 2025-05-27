@@ -1,0 +1,97 @@
+
+'use server';
+import { config } from 'dotenv';
+config(); // Ensure .env variables are loaded
+
+import * as Brevo from '@sendinblue/client';
+import type { EventData, InvitationData } from '@/types';
+
+const SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || "noreply@example.com"; 
+// Consider adding BREVO_SENDER_NAME to .env as well
+const SENDER_NAME = process.env.BREVO_SENDER_NAME || "RSVP Now"; 
+
+const apiInstance = new Brevo.TransactionalEmailsApi();
+const apiKey = apiInstance.authentications['apiKey'];
+apiKey.apiKey = process.env.BREVO_API_KEY!;
+
+if (!process.env.BREVO_API_KEY) {
+  console.warn(
+    'BREVO_API_KEY is not set. Email sending will be disabled. Please set this in your .env file.'
+  );
+}
+if (!process.env.NEXT_PUBLIC_APP_URL) {
+  console.warn(
+    'NEXT_PUBLIC_APP_URL is not set. RSVP links in emails may be incorrect. Please set this in your .env file.'
+  )
+}
+
+
+interface EmailContent {
+  greeting: string;
+  body: string;
+  closing: string;
+}
+
+export async function sendInvitationEmail(
+  invitation: InvitationData,
+  event: EventData,
+  emailContent: EmailContent
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  if (!process.env.BREVO_API_KEY) {
+    console.warn("Brevo API Key not configured. Skipping email send.");
+    return { success: false, error: "Brevo API Key not configured." };
+  }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002'; // Fallback for safety
+  const rsvpLink = `${appUrl}/rsvp/${invitation.uniqueToken}`;
+
+  const sendSmtpEmail = new Brevo.SendSmtpEmail();
+  sendSmtpEmail.to = [{ email: invitation.guestEmail, name: invitation.guestName }];
+  sendSmtpEmail.sender = { email: SENDER_EMAIL, name: SENDER_NAME };
+  sendSmtpEmail.subject = `You're Invited to ${event.name}!`;
+  
+  sendSmtpEmail.htmlContent = `
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+          .header { font-size: 24px; color: #3F51B5; /* primary color */ }
+          .button { display: inline-block; padding: 10px 20px; margin: 20px 0; background-color: #3F51B5; color: white; text-decoration: none; border-radius: 5px; }
+          .footer { margin-top: 20px; font-size: 0.9em; color: #777; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <p class="header">You're Invited!</p>
+          <p>${emailContent.greeting || `Hi ${invitation.guestName},`}</p>
+          <p>${emailContent.body || `We're excited to invite you to ${event.name}.`}</p>
+          <p><strong>Event:</strong> ${event.name}</p>
+          <p><strong>Date:</strong> ${new Date(event.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          <p><strong>Time:</strong> ${event.time}</p>
+          <p><strong>Location:</strong> ${event.location}</p>
+          <p><a href="${rsvpLink}" class="button">Click here to RSVP</a></p>
+          <p>If the button above doesn't work, please copy and paste the following link into your browser:</p>
+          <p><a href="${rsvpLink}">${rsvpLink}</a></p>
+          <p>${emailContent.closing || 'We hope to see you there!'}</p>
+          <div class="footer">
+            <p>This invitation was sent via RSVP Now.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  try {
+    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log('Brevo API called successfully. Returned data: ', JSON.stringify(data));
+    return { success: true, messageId: data.body.messageId };
+  } catch (error: any) {
+    console.error('Error sending email via Brevo: ', error.response ? error.response.body : error.message);
+    return { 
+      success: false, 
+      error: error.response ? error.response.body?.message || JSON.stringify(error.response.body) : error.message 
+    };
+  }
+}
+

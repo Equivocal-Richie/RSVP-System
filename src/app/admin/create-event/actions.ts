@@ -2,23 +2,23 @@
 "use server";
 
 import { z } from "zod";
-import { createEvent, createInvitations } from '@/lib/db';
-import type { EventData, GuestInput, EventMood } from '@/types';
+import { createEvent, createInvitations, createEmailLog, getEventById } from '@/lib/db';
+import type { EventData, GuestInput, EventMood, InvitationData, EmailStatus } from '@/types';
 import { generatePersonalizedInvitation, type GenerateInvitationTextInput, type GenerateInvitationTextOutput as AIGenerateOutput } from '@/ai/flows/generate-invitation-text-flow';
+import { sendInvitationEmail } from '@/lib/emailService';
 
-// Schema for event data coming from the client form
-// This needs to align with CreateEventFormData from CreateEventWizard.tsx but is for server-side transformation
+
 const CreateEventServerSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
-  date: z.string(), // Expecting ISO string date from client, will convert if Date object
+  date: z.string(), 
   time: z.string(),
   location: z.string().min(1),
   mood: z.enum(['formal', 'casual', 'celebratory', 'professional', 'themed']),
-  seatLimit: z.number(), // -1 for unlimited
+  seatLimit: z.number(), 
   organizerEmail: z.string().email().optional(),
   isPublic: z.boolean().optional().default(false),
-  // eventImagePath: z.string().optional(), // To be handled if image upload is implemented
+  eventImagePath: z.string().optional(), // Optional, not fully implemented for storage yet
 });
 
 const CreateEventAndInvitationsSchema = z.object({
@@ -33,45 +33,89 @@ export type CreateEventAndInvitationsInput = z.infer<typeof CreateEventAndInvita
 
 export async function createEventAndProcessInvitations(
   input: CreateEventAndInvitationsInput
-): Promise<{ success: boolean; message: string; eventId?: string; invitationIds?: string[] }> {
+): Promise<{ success: boolean; message: string; eventId?: string; invitationIds?: string[]; emailResults?: any[] }> {
   const validatedInput = CreateEventAndInvitationsSchema.safeParse(input);
   if (!validatedInput.success) {
-    // Log the detailed error for server-side debugging
     console.error("Server-side validation failed:", validatedInput.error.flatten());
     return { success: false, message: "Invalid input: " + JSON.stringify(validatedInput.error.flatten().fieldErrors) };
   }
 
   const { eventData, guests } = validatedInput.data;
+  const emailResults = [];
 
   try {
-    // 1. Create the Event
-    // The eventData here is already shaped by CreateEventServerSchema
     const newEvent = await createEvent(eventData);
-    if (!newEvent) {
+    if (!newEvent || !newEvent.id) {
       return { success: false, message: "Failed to create event in database." };
     }
 
-    // 2. Create Invitations
     const createdInvitations = await createInvitations(newEvent.id, guests);
     if (!createdInvitations || createdInvitations.length === 0) {
       // Potentially roll back event creation or mark it as draft
       return { success: false, message: "Event created, but failed to create invitations." };
     }
+    
+    // Fetch the full event details again to ensure all fields are current for email generation
+    const currentEventDetails = await getEventById(newEvent.id);
+    if (!currentEventDetails) {
+        return { success: false, message: "Failed to fetch created event details for sending emails." };
+    }
 
-    // 3. (Future) Trigger Email Sending Queue for each invitation
-    // For each invitation in createdInvitations:
-    //   - Generate email content (possibly using AI) - could be done here or in the queue worker
-    //   - Add to an email queue (e.g., Cloud Tasks -> SendGrid Function)
-    //   - Log email attempt in EmailLogs
-    console.log(`Event ${newEvent.id} created. ${createdInvitations.length} invitations created. Triggering email processing for these invitations (currently a log message).`);
-    // Example: for (const invitation of createdInvitations) { queueEmail(invitation.id, newEvent); }
 
+    console.log(`Event ${newEvent.id} created. ${createdInvitations.length} invitations created. Processing emails...`);
+
+    for (const invitation of createdInvitations) {
+      let emailStatus: EmailStatus = 'queued';
+      let brevoMessageId: string | undefined;
+      let errorMessage: string | undefined;
+      let sentAtValue: any = null;
+
+      try {
+        const aiInputForEmail: GenerateInvitationTextInput = {
+          eventName: currentEventDetails.name,
+          eventDescription: currentEventDetails.description,
+          eventMood: currentEventDetails.mood,
+          guestName: invitation.guestName,
+        };
+        const aiEmailContent = await generatePersonalizedInvitation(aiInputForEmail);
+
+        const emailResult = await sendInvitationEmail(invitation, currentEventDetails, aiEmailContent);
+        
+        if (emailResult.success) {
+          emailStatus = 'sent'; // Or 'delivered' if Brevo confirms, but 'sent' is safer immediate status
+          brevoMessageId = emailResult.messageId;
+          sentAtValue = new Date().toISOString(); // Or FieldValue.serverTimestamp() if createEmailLog handles it
+          console.log(`Email sent to ${invitation.guestEmail} for event ${newEvent.id}. Message ID: ${brevoMessageId}`);
+        } else {
+          emailStatus = 'failed';
+          errorMessage = emailResult.error || "Unknown error sending email.";
+          console.error(`Failed to send email to ${invitation.guestEmail} for event ${newEvent.id}: ${errorMessage}`);
+        }
+      } catch (aiOrEmailError: any) {
+        emailStatus = 'failed';
+        errorMessage = `Error during AI content generation or email dispatch: ${aiOrEmailError.message}`;
+        console.error(`Critical error processing invitation ${invitation.id}: ${errorMessage}`);
+      }
+
+      emailResults.push({ invitationId: invitation.id, email: invitation.guestEmail, status: emailStatus, messageId: brevoMessageId, error: errorMessage});
+      
+      await createEmailLog({
+        invitationId: invitation.id,
+        eventId: newEvent.id,
+        emailAddress: invitation.guestEmail,
+        status: emailStatus,
+        brevoMessageId: brevoMessageId,
+        errorMessage: errorMessage,
+        sentAt: sentAtValue, // Pass null if queued/failed before actual send attempt, or timestamp if sent
+      });
+    }
 
     return { 
       success: true, 
-      message: "Event and invitations created successfully. Email processing will begin shortly.",
+      message: `Event and invitations created. Email processing complete. Check logs for details. Processed ${emailResults.length} emails.`,
       eventId: newEvent.id,
-      invitationIds: createdInvitations.map(inv => inv.id)
+      invitationIds: createdInvitations.map(inv => inv.id),
+      emailResults,
     };
 
   } catch (error) {
@@ -80,15 +124,11 @@ export async function createEventAndProcessInvitations(
     if (error instanceof Error) {
         errorMessage = error.message;
     }
-    return { success: false, message: errorMessage };
+    return { success: false, message: errorMessage, emailResults };
   }
 }
 
 
-// AI Text Generation
-// This matches the Genkit flow input/output.
-// The name GenerateInvitationTextInput might conflict if not careful with imports.
-// Using AIGenerateOutput to differentiate from the local interface.
 export interface GenerateInvitationTextClientInput {
   eventName: string;
   eventDescription: string;
@@ -97,7 +137,7 @@ export interface GenerateInvitationTextClientInput {
 }
 export interface GenerateInvitationTextClientOutput {
   success: boolean;
-  emailText?: string; // This will be the fullEmailText from AI
+  emailText?: string; 
   greeting?: string;
   body?: string;
   closing?: string;
@@ -106,7 +146,6 @@ export interface GenerateInvitationTextClientOutput {
 
 export async function generateInvitationText(input: GenerateInvitationTextClientInput): Promise<GenerateInvitationTextClientOutput> {
   try {
-    // Prepare input for the Genkit flow
     const aiInput: GenerateInvitationTextInput = {
       eventName: input.eventName,
       eventDescription: input.eventDescription,
@@ -114,10 +153,8 @@ export async function generateInvitationText(input: GenerateInvitationTextClient
       guestName: input.guestName,
     };
 
-    // Call the exported wrapper function from the Genkit flow
     const result: AIGenerateOutput = await generatePersonalizedInvitation(aiInput); 
     
-    // The flow now returns an object with greeting, body, closing, fullEmailText
     return { 
       success: true, 
       emailText: result.fullEmailText,
@@ -135,3 +172,4 @@ export async function generateInvitationText(input: GenerateInvitationTextClient
     return { success: false, message };
   }
 }
+
