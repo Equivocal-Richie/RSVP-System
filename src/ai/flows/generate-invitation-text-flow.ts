@@ -3,16 +3,16 @@
 /**
  * @fileOverview A Genkit flow to generate personalized invitation email text.
  *
- * - generateInvitationTextFlow - Generates email body based on event and guest details.
- * - GenerateInvitationTextInputSchema - Input schema for the flow.
- * - GenerateInvitationTextOutputSchema - Output schema for the flow.
+ * - generatePersonalizedInvitation - Generates email body based on event and guest details.
+ * - GenerateInvitationTextInput - Input schema for the flow.
+ * - GenerateInvitationTextOutput - Output schema for the flow.
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import type { EventMood } from '@/types';
 
-export const GenerateInvitationTextInputSchema = z.object({
+const GenerateInvitationTextInputSchema = z.object({
   eventName: z.string().describe('The name of the event.'),
   eventDescription: z.string().describe('A brief description of the event.'),
   eventMood: z.enum(['formal', 'casual', 'celebratory', 'professional', 'themed']).describe('The overall mood or theme of the event.'),
@@ -20,7 +20,7 @@ export const GenerateInvitationTextInputSchema = z.object({
 });
 export type GenerateInvitationTextInput = z.infer<typeof GenerateInvitationTextInputSchema>;
 
-export const GenerateInvitationTextOutputSchema = z.object({
+const GenerateInvitationTextOutputSchema = z.object({
   greeting: z.string().describe('A personalized greeting for the guest.'),
   body: z.string().describe('The main body of the invitation email, including personalized touches and event mentions.'),
   closing: z.string().describe('A suitable closing for the email.'),
@@ -61,7 +61,7 @@ const generateEmailPrompt = ai.definePrompt({
 });
 
 
-export const generateInvitationTextFlow = ai.defineFlow(
+const generateInvitationTextFlow = ai.defineFlow(
   {
     name: 'generateInvitationTextFlow',
     inputSchema: GenerateInvitationTextInputSchema,
