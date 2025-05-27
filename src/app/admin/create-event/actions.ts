@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { createEvent, createInvitations } from '@/lib/db';
 import type { EventData, GuestInput, EventMood } from '@/types';
-import { generateInvitationTextFlow, type GenerateInvitationTextInput, type GenerateInvitationTextOutput as AIGenerateOutput } from '@/ai/flows/generate-invitation-text-flow';
+import { generatePersonalizedInvitation, type GenerateInvitationTextInput, type GenerateInvitationTextOutput as AIGenerateOutput } from '@/ai/flows/generate-invitation-text-flow';
 
 // Schema for event data coming from the client form
 // This needs to align with CreateEventFormData from CreateEventWizard.tsx but is for server-side transformation
@@ -114,7 +114,8 @@ export async function generateInvitationText(input: GenerateInvitationTextClient
       guestName: input.guestName,
     };
 
-    const result: AIGenerateOutput = await generateInvitationTextFlow(aiInput);
+    // Call the exported wrapper function from the Genkit flow
+    const result: AIGenerateOutput = await generatePersonalizedInvitation(aiInput); 
     
     // The flow now returns an object with greeting, body, closing, fullEmailText
     return { 
