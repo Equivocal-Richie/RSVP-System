@@ -1,3 +1,4 @@
+
 "use server";
 
 import { getEventById, getAllInvitationsForEvent, getEventStats } from "@/lib/db";
@@ -15,7 +16,7 @@ export async function fetchAdminDashboardData(eventId: string): Promise<{
   const event = await getEventById(eventId);
 
   const eventDetails = event 
-    ? `Event: ${event.name}, Date: ${event.date}, Time: ${event.time}, Location: ${event.location}, Seat Limit: ${event.seatLimit}`
+    ? `Event: ${event.name}, Date: ${event.date}, Time: ${event.time}, Location: ${event.location}, Seat Limit: ${event.seatLimit}, Mood: ${event.mood}`
     : "Event details not available.";
   
   const guestListString = invitations
@@ -27,10 +28,7 @@ export async function fetchAdminDashboardData(eventId: string): Promise<{
 
 export async function triggerAiTabulation(input: TabulateRsvpStatsInput): Promise<TabulateRsvpStatsOutput | { error: string }> {
   try {
-    // Here, you might add logic to ensure the user has permissions to do this
     const result = await tabulateRsvpStats(input);
-    // In a real app, you'd use result.guestsToRemind to queue emails.
-    // For now, we just return the result.
     return result;
   } catch (error) {
     console.error("AI Tabulation Error:", error);
@@ -45,12 +43,13 @@ export async function exportGuestsToCsv(eventId: string): Promise<string | { err
       return { error: "No guests found for this event." };
     }
 
-    const headers = ["Invitation ID", "Guest Name", "Guest Email", "Status", "RSVP At", "Visited"];
+    const headers = ["Invitation ID", "Unique Token", "Guest Name", "Guest Email", "Status", "RSVP At", "Visited"];
     const csvRows = [
       headers.join(','),
       ...invitations.map(inv => [
         inv.id,
-        `"${inv.guestName.replace(/"/g, '""')}"`, // Handle quotes in names
+        inv.uniqueToken,
+        `"${inv.guestName.replace(/"/g, '""')}"`, 
         inv.guestEmail,
         inv.status,
         inv.rsvpAt ? new Date(inv.rsvpAt).toLocaleString() : "N/A",
@@ -64,10 +63,11 @@ export async function exportGuestsToCsv(eventId: string): Promise<string | { err
   }
 }
 
-// Placeholder for re-sending invitations action
-export async function resendInvitations(guestIds: string[]): Promise<{ success: boolean; message: string }> {
-  // This is where you'd integrate with your email queueing system (e.g., Firebase Functions + Cloud Tasks + SendGrid)
-  console.log("Attempting to resend invitations to:", guestIds);
+export async function resendInvitations(guestUniqueTokens: string[]): Promise<{ success: boolean; message: string }> {
+  // This is where you'd integrate with your email queueing system 
+  // (e.g., Firebase Functions + Cloud Tasks + SendGrid)
+  // For now, we use guestUniqueTokens to identify them.
+  console.log("Attempting to resend invitations to guests with tokens:", guestUniqueTokens);
   // Simulate success
-  return { success: true, message: `Queued ${guestIds.length} invitations for re-sending.` };
+  return { success: true, message: `Queued ${guestUniqueTokens.length} invitations for re-sending.` };
 }

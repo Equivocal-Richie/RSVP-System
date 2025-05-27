@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -9,19 +10,16 @@ import { Badge } from "@/components/ui/badge";
 import { fetchAdminDashboardData, triggerAiTabulation, exportGuestsToCsv, resendInvitations } from '../actions';
 import type { InvitationData, RsvpStats, RsvpStatus } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock } from 'lucide-react';
+import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock, PlusCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from "@/components/ui/progress";
 import type { TabulateRsvpStatsOutput } from '@/ai/flows/tabulate-rsvps';
-import { cn } from "@/lib/utils"; // Import cn from lib/utils
+import { cn } from "@/lib/utils";
 
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
-  type ChartConfig
 } from "@/components/ui/chart";
 import * as RechartsPrimitive from "recharts";
 
@@ -48,15 +46,14 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, descripti
   </Card>
 );
 
-// Chart configuration - defined outside component or memoized if dynamic
 const rsvpChartConfig = {
-  guests: { label: "Guests" }, // General label for the 'count' dataKey
+  guests: { label: "Guests" }, 
   Confirmed: { label: "Confirmed", color: "hsl(var(--chart-2))" },
   Pending: { label: "Pending", color: "hsl(var(--chart-4))" },
   Declined: { label: "Declined", color: "hsl(var(--destructive))" },
   Waitlisted: { label: "Waitlisted", color: "hsl(var(--chart-5))" },
   ToRemindAI: { label: "To Remind (AI)", color: "hsl(var(--chart-1))" },
-} satisfies ChartConfig;
+} satisfies RechartsPrimitive.ChartConfig;
 
 export default function DashboardClient() {
   const [stats, setStats] = useState<RsvpStats | null>(null);
@@ -117,17 +114,18 @@ export default function DashboardClient() {
       toast({ title: "No Guests to Remind", description: "AI analysis found no guests needing reminders, or analysis not run.", variant: "default" });
       return;
     }
-    const guestsToRemindIds = aiSummary.guestsToRemind
-      .map(guestIdentifier => invitations.find(inv => inv.guestName === guestIdentifier || inv.guestEmail === guestIdentifier)?.id)
+    const guestsToRemindTokens = aiSummary.guestsToRemind
+      .map(guestIdentifier => invitations.find(inv => inv.guestName === guestIdentifier || inv.guestEmail === guestIdentifier)?.uniqueToken)
       .filter(Boolean) as string[];
 
-    if (guestsToRemindIds.length === 0) {
+    if (guestsToRemindTokens.length === 0) {
         toast({ title: "No Matching Guests", description: "Could not match AI's list of guests to remind with actual invitations.", variant: "destructive"});
         return;
     }
 
     setIsAiLoading(true);
-    const result = await resendInvitations(guestsToRemindIds);
+    // Assuming resendInvitations is updated to take tokens or can find IDs from tokens
+    const result = await resendInvitations(guestsToRemindTokens); 
     toast({ title: result.success ? "Success" : "Error", description: result.message, variant: result.success ? "default" : "destructive"});
     setIsAiLoading(false);
   };
@@ -184,7 +182,15 @@ export default function DashboardClient() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-bold text-primary">Admin Dashboard</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-primary">Admin Dashboard</h1>
+        <Button asChild>
+          <Link href="/admin/create-event">
+            <PlusCircle className="mr-2 h-5 w-5" />
+            Create New Event
+          </Link>
+        </Button>
+      </div>
       
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <StatCard title="Total Invited" value={invitations.length} icon={Users} description="Total number of guests invited." />
@@ -202,7 +208,7 @@ export default function DashboardClient() {
           </CardHeader>
           <CardContent>
             <Progress value={confirmedPercentage} className="w-full h-4" />
-            <p className="text-sm text-muted-foreground mt-2">{stats.availableSeats} seats remaining</p>
+            <p className="text-sm text-muted-foreground mt-2">{stats.availableSeats > 0 ? `${stats.availableSeats} seats remaining` : 'No seats remaining'}</p>
           </CardContent>
         </Card>
       )}
@@ -218,10 +224,10 @@ export default function DashboardClient() {
               <ChartContainer config={rsvpChartConfig} className="h-full w-full">
                 <RechartsPrimitive.BarChart
                   data={rsvpChartData}
-                  layout="horizontal"
-                  margin={{ top: 5, right: 5, left: -20, bottom: 5 }} // Adjust left margin for YAxis labels
+                  layout="horizontal" // Changed to horizontal
+                  margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
                 >
-                  <RechartsPrimitive.CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <RechartsPrimitive.CartesianGrid strokeDasharray="3 3" vertical={false}/>
                   <RechartsPrimitive.XAxis
                     dataKey="category"
                     tickLine={false}
@@ -297,6 +303,7 @@ export default function DashboardClient() {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Token</TableHead>
                   <TableHead>RSVP'd At</TableHead>
                   <TableHead>Visited Link</TableHead>
                 </TableRow>
@@ -314,6 +321,7 @@ export default function DashboardClient() {
                         {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                       </Badge>
                     </TableCell>
+                    <TableCell className="truncate max-w-xs text-xs">{inv.uniqueToken}</TableCell>
                     <TableCell>{inv.rsvpAt ? new Date(inv.rsvpAt).toLocaleDateString() : 'N/A'}</TableCell>
                     <TableCell>{inv.visited ? 'Yes' : 'No'}</TableCell>
                   </TableRow>
@@ -329,15 +337,13 @@ export default function DashboardClient() {
         <CardHeader><CardTitle>Developer Notes / TODOs</CardTitle></CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-1">
             <p>• <strong>Firestore Setup:</strong> Ensure Firebase Admin SDK is configured with credentials in environment variables.</p>
-            <p>• <strong>Data Seeding:</strong> Manually add initial event (ID: {EVENT_ID}) and guest data to Firestore for the app to function.</p>
-            <p>• <strong>Email Integration:</strong> Actual email sending for (re-)invitations needs SendGrid/Firebase Functions setup (Email Logs table is ready).</p>
-            <p>• <strong>Guest Management:</strong> Full CRUD for guests (edit name/email, add/delete) not implemented.</p>
-            <p>• <strong>Authentication:</strong> Admin dashboard is currently public. Add authentication.</p>
-            <p>• <strong>Error Handling:</strong> More robust error handling and edge case management (e.g. Firestore offline).</p>
-            <p>• <strong>Waitlist UI:</strong> Form doesn't auto-waitlist yet; 'waitlisted' status primarily for DB schema & admin use for now.</p>
+            <p>• <strong>Data Seeding:</strong> Add `event123` and guest data to Firestore for dashboard to function.</p>
+            <p>• <strong>Create Event Flow:</strong> UI structure for event creation wizard is added. Needs full implementation of state, DB interactions, and AI email generation/sending logic.</p>
+            <p>• <strong>Email Integration:</strong> Actual email sending needs SendGrid/Cloud Functions setup.</p>
+            <p>• <strong>Public Events:</strong> "Make Public" feature and homepage display not implemented.</p>
+            <p>• <strong>Authentication:</strong> Admin dashboard is public. Add auth.</p>
         </CardContent>
       </Card>
     </div>
   );
 }
-

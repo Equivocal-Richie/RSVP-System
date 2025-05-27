@@ -1,4 +1,5 @@
 
+
 // Base type for Firestore Timestamps, which will be converted to string for client
 type FirestoreTimestamp = {
   _seconds: number;
@@ -8,6 +9,8 @@ type FirestoreTimestamp = {
 export type TimestampString = string;
 
 
+export type EventMood = 'formal' | 'casual' | 'celebratory' | 'professional' | 'themed';
+
 export interface EventData {
   id: string;
   name: string;
@@ -15,8 +18,13 @@ export interface EventData {
   time: string;
   location: string;
   description: string;
-  seatLimit: number;
+  mood: EventMood;
+  eventImagePath?: string; // Optional: path/URL to event image
+  seatLimit: number; // Set to 0 or -1 if no limit
   confirmedGuestsCount: number; // This will be derived or read from a denormalized field
+  organizerEmail?: string; // For "Inquire" functionality
+  isPublic?: boolean; // Defaults to false
+  publicRsvpLink?: string; // Unique link for public RSVPs if isPublic is true
   createdAt?: TimestampString; // from Firestore Timestamp
   updatedAt?: TimestampString; // from Firestore Timestamp
 }
@@ -24,22 +32,28 @@ export interface EventData {
 export type RsvpStatus = 'pending' | 'confirmed' | 'declined' | 'waitlisted';
 
 export interface InvitationData {
-  id: string; // Unique unguessable URL part, used as Firestore document ID
+  id: string; // Firestore document ID
+  uniqueToken: string; // Unique unguessable URL part, indexed
   eventId: string;
   guestName: string;
   guestEmail: string;
   status: RsvpStatus;
   visited: boolean;
   rsvpAt?: TimestampString | null; // ISO string date, from Firestore Timestamp
-  originalGuestName?: string;
-  originalGuestEmail?: string;
+  originalGuestName?: string; // If admin updates, keep original for reference
+  originalGuestEmail?: string; // If admin updates, keep original for reference
   createdAt?: TimestampString; // from Firestore Timestamp
   updatedAt?: TimestampString; // from Firestore Timestamp
 }
 
+export interface GuestInput {
+  name: string;
+  email: string;
+}
+
 export interface ReservationData {
   id: string; // Firestore document ID
-  invitationId: string; // Corresponds to InvitationData.id
+  invitationId: string; // Corresponds to InvitationData.id (or uniqueToken if preferred for lookup)
   eventId: string;
   reservationTime: TimestampString; // from Firestore Timestamp
   status: 'confirmed' | 'waitlisted';
@@ -49,11 +63,11 @@ export interface ReservationData {
 
 export interface EmailLogData {
   id: string; // Firestore document ID
-  invitationId: string;
+  invitationId: string; // or uniqueToken
   eventId: string;
   emailAddress: string;
   sentAt: TimestampString; // from Firestore Timestamp
-  status: 'sent' | 'failed' | 'bounced';
+  status: 'sent' | 'failed' | 'bounced' | 'queued';
   createdAt?: TimestampString;
 }
 
@@ -61,7 +75,7 @@ export interface RsvpStats {
   confirmed: number;
   pending: number;
   declined: number;
-  waitlisted: number; // Added waitlisted to stats
-  totalSeats: number;
-  availableSeats: number;
+  waitlisted: number; 
+  totalSeats: number; // 0 or -1 means unlimited
+  availableSeats: number; // Meaningful only if totalSeats > 0
 }
