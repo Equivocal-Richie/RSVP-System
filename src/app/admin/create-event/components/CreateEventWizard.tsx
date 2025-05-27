@@ -18,7 +18,8 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 
 const MAX_EVENT_NAME_LENGTH = 70;
 
-const eventDetailsSchema = z.object({
+// Define the object shape for event details
+const eventDetailsObjectSchema = z.object({
   name: z.string().min(3, "Event name is too short").max(MAX_EVENT_NAME_LENGTH, `Event name is too long (max ${MAX_EVENT_NAME_LENGTH} chars)`),
   description: z.string().min(10, "Description is too short"),
   date: z.date({ required_error: "Event date is required." }),
@@ -29,27 +30,32 @@ const eventDetailsSchema = z.object({
   seatLimit: z.number().optional().default(0),
   eventImage: z.custom<File>((val) => val instanceof File, "Please upload an event image.").optional(),
   organizerEmail: z.string().email("Please enter a valid organizer email for inquiries.").optional(),
-}).refine(data => {
-  if (data.hasSeatLimit === 'yes') {
-    return data.seatLimit && data.seatLimit > 0;
-  }
-  return true;
-}, {
-  message: "Seat limit must be a positive number if enabled.",
-  path: ["seatLimit"],
 });
 
-const guestListSchema = z.object({
+// Define the object shape for guest list
+const guestListObjectSchema = z.object({
   guests: z.array(z.object({
     name: z.string().min(2, "Guest name is too short"),
     email: z.string().email("Invalid guest email address"),
   })).min(1, "Please add at least one guest."),
 });
 
-// Combined schema for validation if needed, or validate per step
-const wizardSchema = eventDetailsSchema.merge(guestListSchema);
-export type CreateEventFormData = z.infer<typeof wizardSchema>;
+// Merge the ZodObject schemas
+const combinedObjectSchema = eventDetailsObjectSchema.merge(guestListObjectSchema);
 
+// Apply refinements to the combined schema
+const wizardSchema = combinedObjectSchema.refine(data => {
+  if (data.hasSeatLimit === 'yes') {
+    // Ensure seatLimit is a positive number if hasSeatLimit is 'yes'
+    return data.seatLimit != null && data.seatLimit > 0;
+  }
+  return true;
+}, {
+  message: "Seat limit must be a positive number if enabled.",
+  path: ["seatLimit"], // Path relative to the combined data object
+});
+
+export type CreateEventFormData = z.infer<typeof wizardSchema>;
 
 const totalSteps = 4;
 
@@ -60,8 +66,8 @@ export function CreateEventWizard() {
   const { toast } = useToast();
 
   const methods = useForm<CreateEventFormData>({
-    resolver: zodResolver(wizardSchema), // Or use per-step schemas
-    mode: 'onChange', // Or 'onBlur'
+    resolver: zodResolver(wizardSchema),
+    mode: 'onChange', 
     defaultValues: {
       name: "",
       description: "",
@@ -81,9 +87,11 @@ export function CreateEventWizard() {
   const handleNext = async () => {
     let isValid = false;
     if (currentStep === 1) {
-      isValid = await trigger(["name", "description", "date", "time", "location", "mood", "hasSeatLimit", "seatLimit", "organizerEmail"]);
+      // Trigger validation for fields in the eventDetailsObjectSchema part
+      isValid = await trigger(Object.keys(eventDetailsObjectSchema.shape) as Array<keyof CreateEventFormData>);
     } else if (currentStep === 2) {
-      isValid = await trigger("guests");
+      // Trigger validation for fields in the guestListObjectSchema part
+      isValid = await trigger(Object.keys(guestListObjectSchema.shape) as Array<keyof CreateEventFormData>);
     } else if (currentStep === 3) {
       isValid = true; // Preview step, no new validation, assumes previous steps are valid
     }
