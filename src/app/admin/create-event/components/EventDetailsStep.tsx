@@ -11,7 +11,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { CalendarIcon, Image as ImageIcon } from 'lucide-react';
+import { CalendarIcon, ImageIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { useState, ChangeEvent } from 'react';
 import Image from 'next/image';
@@ -88,6 +88,7 @@ export function EventDetailsStep() {
                 selected={watch("date")}
                 onSelect={(date) => setValue("date", date, { shouldValidate: true })}
                 initialFocus
+                disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))} // Disable past dates
               />
             </PopoverContent>
           </Popover>
@@ -145,9 +146,9 @@ export function EventDetailsStep() {
         </RadioGroup>
         {hasSeatLimit === 'yes' && (
           <div className="mt-2">
-            <Label htmlFor="seatLimit">Number of Seats</Label>
-            <Input id="seatLimit" type="number" {...register("seatLimit", { valueAsNumber: true, validate: v => v > 0 || "Seats must be positive" })} placeholder="e.g., 100" />
-            {errors.seatLimit && <p className="text-sm text-destructive">{(errors.seatLimit as any).message}</p>}
+            <Label htmlFor="seatLimitNumber">Number of Seats</Label>
+            <Input id="seatLimitNumber" type="number" {...register("seatLimitNumber", { valueAsNumber: true, validate: v => (v != null && v > 0) || "Seats must be positive" })} placeholder="e.g., 100" />
+            {errors.seatLimitNumber && <p className="text-sm text-destructive">{(errors.seatLimitNumber as any).message}</p>}
           </div>
         )}
       </div>
@@ -172,4 +173,3 @@ export function EventDetailsStep() {
     </div>
   );
 }
-

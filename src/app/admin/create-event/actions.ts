@@ -4,18 +4,20 @@
 import { z } from "zod";
 import { createEvent, createInvitations } from '@/lib/db';
 import type { EventData, GuestInput, EventMood } from '@/types';
-import { generateInvitationTextFlow } from '@/ai/flows/generate-invitation-text-flow'; // Assuming flow exists
+import { generateInvitationTextFlow, type GenerateInvitationTextInput, type GenerateInvitationTextOutput as AIGenerateOutput } from '@/ai/flows/generate-invitation-text-flow';
 
 // Schema for event data coming from the client form
+// This needs to align with CreateEventFormData from CreateEventWizard.tsx but is for server-side transformation
 const CreateEventServerSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
-  date: z.string(), // ISO string date
+  date: z.string(), // Expecting ISO string date from client, will convert if Date object
   time: z.string(),
   location: z.string().min(1),
   mood: z.enum(['formal', 'casual', 'celebratory', 'professional', 'themed']),
   seatLimit: z.number(), // -1 for unlimited
   organizerEmail: z.string().email().optional(),
+  isPublic: z.boolean().optional().default(false),
   // eventImagePath: z.string().optional(), // To be handled if image upload is implemented
 });
 
@@ -24,7 +26,7 @@ const CreateEventAndInvitationsSchema = z.object({
   guests: z.array(z.object({
     name: z.string().min(1),
     email: z.string().email(),
-  })).min(1),
+  })).min(1, "At least one guest is required."),
 });
 
 export type CreateEventAndInvitationsInput = z.infer<typeof CreateEventAndInvitationsSchema>;
@@ -34,13 +36,16 @@ export async function createEventAndProcessInvitations(
 ): Promise<{ success: boolean; message: string; eventId?: string; invitationIds?: string[] }> {
   const validatedInput = CreateEventAndInvitationsSchema.safeParse(input);
   if (!validatedInput.success) {
-    return { success: false, message: "Invalid input: " + validatedInput.error.flatten().fieldErrors };
+    // Log the detailed error for server-side debugging
+    console.error("Server-side validation failed:", validatedInput.error.flatten());
+    return { success: false, message: "Invalid input: " + JSON.stringify(validatedInput.error.flatten().fieldErrors) };
   }
 
   const { eventData, guests } = validatedInput.data;
 
   try {
     // 1. Create the Event
+    // The eventData here is already shaped by CreateEventServerSchema
     const newEvent = await createEvent(eventData);
     if (!newEvent) {
       return { success: false, message: "Failed to create event in database." };
@@ -55,61 +60,77 @@ export async function createEventAndProcessInvitations(
 
     // 3. (Future) Trigger Email Sending Queue for each invitation
     // For each invitation in createdInvitations:
-    //   - Generate email content (possibly using AI)
+    //   - Generate email content (possibly using AI) - could be done here or in the queue worker
     //   - Add to an email queue (e.g., Cloud Tasks -> SendGrid Function)
     //   - Log email attempt in EmailLogs
+    console.log(`Event ${newEvent.id} created. ${createdInvitations.length} invitations created. Triggering email processing for these invitations (currently a log message).`);
+    // Example: for (const invitation of createdInvitations) { queueEmail(invitation.id, newEvent); }
 
-    console.log(`Event ${newEvent.id} created. ${createdInvitations.length} invitations created and ready for email processing.`);
 
     return { 
       success: true, 
       message: "Event and invitations created successfully. Email processing will begin shortly.",
       eventId: newEvent.id,
-      invitationIds: createdInvitations.map(inv => inv.id) // Return Firestore document IDs
+      invitationIds: createdInvitations.map(inv => inv.id)
     };
 
   } catch (error) {
     console.error("Error in createEventAndProcessInvitations:", error);
-    return { success: false, message: "An unexpected error occurred while processing the event and invitations." };
+    let errorMessage = "An unexpected error occurred while processing the event and invitations.";
+    if (error instanceof Error) {
+        errorMessage = error.message;
+    }
+    return { success: false, message: errorMessage };
   }
 }
 
 
-// AI Text Generation (stub, to be connected to Genkit flow)
-interface GenerateInvitationTextInput {
+// AI Text Generation
+// This matches the Genkit flow input/output.
+// The name GenerateInvitationTextInput might conflict if not careful with imports.
+// Using AIGenerateOutput to differentiate from the local interface.
+export interface GenerateInvitationTextClientInput {
   eventName: string;
   eventDescription: string;
   eventMood: EventMood;
   guestName: string;
 }
-interface GenerateInvitationTextOutput {
+export interface GenerateInvitationTextClientOutput {
   success: boolean;
-  emailText?: string;
+  emailText?: string; // This will be the fullEmailText from AI
+  greeting?: string;
+  body?: string;
+  closing?: string;
   message?: string;
 }
 
-export async function generateInvitationText(input: GenerateInvitationTextInput): Promise<GenerateInvitationTextOutput> {
+export async function generateInvitationText(input: GenerateInvitationTextClientInput): Promise<GenerateInvitationTextClientOutput> {
   try {
-    // const result = await generateInvitationTextFlow(input);
-    // return { success: true, emailText: result.text };
+    // Prepare input for the Genkit flow
+    const aiInput: GenerateInvitationTextInput = {
+      eventName: input.eventName,
+      eventDescription: input.eventDescription,
+      eventMood: input.eventMood,
+      guestName: input.guestName,
+    };
+
+    const result: AIGenerateOutput = await generateInvitationTextFlow(aiInput);
     
-    // Placeholder implementation
-    const { eventName, eventMood, guestName } = input;
-    let greeting = `Dear ${guestName},`;
-    if (eventMood === 'formal') {
-        greeting = `Esteemed ${guestName},`;
-    } else if (eventMood === 'casual') {
-        greeting = `Hey ${guestName}!`;
-    } else if (eventMood === 'celebratory') {
-        greeting = `Get ready to celebrate, ${guestName}!`;
-    }
-
-
-    const emailText = `${greeting}\n\nI'm thrilled to invite you to ${eventName}! It's going to be a ${eventMood} occasion, and we'd love for you to be there.\n\nMore details about the event will be provided in the formal invitation sections.`;
-    return { success: true, emailText };
+    // The flow now returns an object with greeting, body, closing, fullEmailText
+    return { 
+      success: true, 
+      emailText: result.fullEmailText,
+      greeting: result.greeting,
+      body: result.body,
+      closing: result.closing,
+    };
 
   } catch (error) {
     console.error("Error generating invitation text with AI:", error);
-    return { success: false, message: "Failed to generate AI invitation text." };
+    let message = "Failed to generate AI invitation text.";
+    if (error instanceof Error) {
+        message = error.message;
+    }
+    return { success: false, message };
   }
 }

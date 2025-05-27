@@ -12,13 +12,13 @@ import { GuestListStep } from './GuestListStep';
 import { PreviewSendStep } from './PreviewSendStep';
 import { ConfirmationStep } from './ConfirmationStep';
 import type { EventData, GuestInput, EventMood } from '@/types';
-import { createEventAndProcessInvitations } from '../actions';
+import { createEventAndProcessInvitations, type CreateEventAndInvitationsInput } from '../actions';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
 const MAX_EVENT_NAME_LENGTH = 70;
 
-// Define the object shape for event details
+// Define the object shape for event details (client-side schema)
 const eventDetailsObjectSchema = z.object({
   name: z.string().min(3, "Event name is too short").max(MAX_EVENT_NAME_LENGTH, `Event name is too long (max ${MAX_EVENT_NAME_LENGTH} chars)`),
   description: z.string().min(10, "Description is too short"),
@@ -27,9 +27,9 @@ const eventDetailsObjectSchema = z.object({
   location: z.string().min(3, "Location is too short"),
   mood: z.enum(['formal', 'casual', 'celebratory', 'professional', 'themed'], { required_error: "Please select an event mood." }),
   hasSeatLimit: z.enum(['yes', 'no']),
-  seatLimit: z.number().optional().default(0),
+  seatLimitNumber: z.number().optional().default(0), // Renamed from seatLimit to avoid conflict with server schema expectation
   eventImage: z.custom<File>((val) => val instanceof File, "Please upload an event image.").optional(),
-  organizerEmail: z.string().email("Please enter a valid organizer email for inquiries.").optional(),
+  organizerEmail: z.string().email("Please enter a valid organizer email for inquiries.").optional().or(z.literal("")),
 });
 
 // Define the object shape for guest list
@@ -46,13 +46,12 @@ const combinedObjectSchema = eventDetailsObjectSchema.merge(guestListObjectSchem
 // Apply refinements to the combined schema
 const wizardSchema = combinedObjectSchema.refine(data => {
   if (data.hasSeatLimit === 'yes') {
-    // Ensure seatLimit is a positive number if hasSeatLimit is 'yes'
-    return data.seatLimit != null && data.seatLimit > 0;
+    return data.seatLimitNumber != null && data.seatLimitNumber > 0;
   }
   return true;
 }, {
   message: "Seat limit must be a positive number if enabled.",
-  path: ["seatLimit"], // Path relative to the combined data object
+  path: ["seatLimitNumber"],
 });
 
 export type CreateEventFormData = z.infer<typeof wizardSchema>;
@@ -76,7 +75,7 @@ export function CreateEventWizard() {
       location: "",
       mood: 'casual',
       hasSeatLimit: 'no',
-      seatLimit: 0,
+      seatLimitNumber: 0,
       guests: [{ name: "", email: "" }],
       organizerEmail: "",
     },
@@ -87,13 +86,11 @@ export function CreateEventWizard() {
   const handleNext = async () => {
     let isValid = false;
     if (currentStep === 1) {
-      // Trigger validation for fields in the eventDetailsObjectSchema part
       isValid = await trigger(Object.keys(eventDetailsObjectSchema.shape) as Array<keyof CreateEventFormData>);
     } else if (currentStep === 2) {
-      // Trigger validation for fields in the guestListObjectSchema part
       isValid = await trigger(Object.keys(guestListObjectSchema.shape) as Array<keyof CreateEventFormData>);
     } else if (currentStep === 3) {
-      isValid = true; // Preview step, no new validation, assumes previous steps are valid
+      isValid = true; 
     }
     
     if (isValid && currentStep < totalSteps) {
@@ -116,27 +113,28 @@ export function CreateEventWizard() {
   const onSubmit = async (data: CreateEventFormData) => {
     setIsLoading(true);
     try {
-      const eventToCreate: Omit<EventData, 'id' | 'confirmedGuestsCount' | 'createdAt' | 'updatedAt' | 'eventImagePath'> = {
-        name: data.name,
-        description: data.description,
-        date: data.date.toISOString(),
-        time: data.time,
-        location: data.location,
-        mood: data.mood as EventMood,
-        seatLimit: data.hasSeatLimit === 'yes' ? (data.seatLimit || 0) : -1, // -1 for unlimited
-        organizerEmail: data.organizerEmail || undefined,
-        isPublic: false, // Default to private
+      // Prepare data for the server action
+      const serverInput: CreateEventAndInvitationsInput = {
+        eventData: {
+          name: data.name,
+          description: data.description,
+          date: data.date.toISOString(), // Convert Date to ISO string
+          time: data.time,
+          location: data.location,
+          mood: data.mood as EventMood,
+          seatLimit: data.hasSeatLimit === 'yes' ? (data.seatLimitNumber || 0) : -1,
+          organizerEmail: data.organizerEmail || undefined,
+          isPublic: false, // Default, can be changed later
+          // eventImagePath: data.eventImage ? await handleImageUpload(data.eventImage) : undefined, // Future: handle image upload
+        },
+        guests: data.guests,
       };
       
-      // TODO: Handle eventImage upload and get eventImagePath
-
-      const guestsToInvite: GuestInput[] = data.guests;
-
-      const result = await createEventAndProcessInvitations({ eventData: eventToCreate, guests: guestsToInvite });
+      const result = await createEventAndProcessInvitations(serverInput);
 
       if (result.success && result.eventId) {
         setCreatedEventId(result.eventId);
-        setCurrentStep(totalSteps); // Go to Done step
+        setCurrentStep(totalSteps); 
         toast({
           title: "Event Created Successfully!",
           description: "Invitations are being processed.",
@@ -170,13 +168,13 @@ export function CreateEventWizard() {
           <Progress value={progressValue} className="w-full mt-2 h-3" />
         </CardHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
-          <CardContent className="min-h-[400px]">
+          <CardContent className="min-h-[400px] py-6">
             {currentStep === 1 && <EventDetailsStep />}
             {currentStep === 2 && <GuestListStep />}
             {currentStep === 3 && <PreviewSendStep eventData={getValues()} guestList={getValues().guests} />}
             {currentStep === 4 && <ConfirmationStep eventId={createdEventId} />}
           </CardContent>
-          <CardFooter className="flex justify-between pt-6">
+          <CardFooter className="flex justify-between pt-6 border-t">
             {currentStep > 1 && currentStep < totalSteps && (
               <Button type="button" variant="outline" onClick={handleBack} disabled={isLoading}>
                 Back
@@ -189,8 +187,11 @@ export function CreateEventWizard() {
             )}
             {currentStep === 3 && (
               <Button type="submit" disabled={isLoading} className="ml-auto">
-                {isLoading ? "Processing..." : "Create Event & Send Invitations"}
+                {isLoading ? "Processing..." : "Create Event & Prepare Invitations"}
               </Button>
+            )}
+             {currentStep === totalSteps && ( // No buttons on confirmation step or a "Go to Dashboard" button
+              <div className="ml-auto"></div> // Placeholder to keep footer structure if needed
             )}
           </CardFooter>
         </form>
