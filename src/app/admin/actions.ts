@@ -1,29 +1,44 @@
 
 "use server";
 
-import { getEventById, getAllInvitationsForEvent, getEventStats } from "@/lib/db";
+import { getEventById, getAllInvitationsForEvent, getEventStats, getMostRecentEventId } from "@/lib/db";
 import { tabulateRsvpStats, type TabulateRsvpStatsInput, type TabulateRsvpStatsOutput } from "@/ai/flows/tabulate-rsvps";
-import type { InvitationData, RsvpStats } from "@/types";
+import type { InvitationData, RsvpStats, EventData } from "@/types";
 
-export async function fetchAdminDashboardData(eventId: string): Promise<{
+export async function fetchAdminDashboardData(): Promise<{
+  event: EventData | null;
   stats: RsvpStats | null;
   invitations: InvitationData[];
-  eventDetails: string;
-  guestListString: string;
+  eventDetails: string; // For AI processing
+  guestListString: string; // For AI processing
 }> {
-  const stats = await getEventStats(eventId);
-  const invitations = await getAllInvitationsForEvent(eventId);
-  const event = await getEventById(eventId);
+  const recentEventId = await getMostRecentEventId();
 
-  const eventDetails = event 
+  if (!recentEventId) {
+    return {
+      event: null,
+      stats: null,
+      invitations: [],
+      eventDetails: "No events found.",
+      guestListString: ""
+    };
+  }
+
+  const event = await getEventById(recentEventId);
+  const stats = await getEventStats(recentEventId);
+  const invitations = await getAllInvitationsForEvent(recentEventId);
+
+  const eventDetailsForAI = event
     ? `Event: ${event.name}, Date: ${event.date}, Time: ${event.time}, Location: ${event.location}, Seat Limit: ${event.seatLimit}, Mood: ${event.mood}`
     : "Event details not available.";
   
-  const guestListString = invitations
-    .map(inv => `${inv.guestName} (${inv.guestEmail}): ${inv.status}`)
-    .join("\n");
+  const guestListForAI = invitations.length > 0
+    ? invitations
+        .map(inv => `${inv.guestName} (${inv.guestEmail}): ${inv.status}`)
+        .join("\n")
+    : "No guests invited for this event.";
 
-  return { stats, invitations, eventDetails, guestListString };
+  return { event, stats, invitations, eventDetails: eventDetailsForAI, guestListString: guestListForAI };
 }
 
 export async function triggerAiTabulation(input: TabulateRsvpStatsInput): Promise<TabulateRsvpStatsOutput | { error: string }> {
@@ -36,7 +51,10 @@ export async function triggerAiTabulation(input: TabulateRsvpStatsInput): Promis
   }
 }
 
-export async function exportGuestsToCsv(eventId: string): Promise<string | { error: string }> {
+export async function exportGuestsToCsv(eventId: string | undefined): Promise<string | { error: string }> {
+  if (!eventId) {
+    return { error: "No event specified for export." };
+  }
   try {
     const invitations = await getAllInvitationsForEvent(eventId);
     if (!invitations.length) {
@@ -64,10 +82,6 @@ export async function exportGuestsToCsv(eventId: string): Promise<string | { err
 }
 
 export async function resendInvitations(guestUniqueTokens: string[]): Promise<{ success: boolean; message: string }> {
-  // This is where you'd integrate with your email queueing system 
-  // (e.g., Firebase Functions + Cloud Tasks + SendGrid)
-  // For now, we use guestUniqueTokens to identify them.
   console.log("Attempting to resend invitations to guests with tokens:", guestUniqueTokens);
-  // Simulate success
   return { success: true, message: `Queued ${guestUniqueTokens.length} invitations for re-sending.` };
 }

@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { fetchAdminDashboardData, triggerAiTabulation, exportGuestsToCsv, resendInvitations } from '../actions';
-import type { InvitationData, RsvpStats, RsvpStatus } from '@/types';
+import type { InvitationData, RsvpStats, RsvpStatus, EventData } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock, PlusCircle } from 'lucide-react';
+import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock, PlusCircle, CalendarClock } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from "@/components/ui/progress";
 import type { TabulateRsvpStatsOutput } from '@/ai/flows/tabulate-rsvps';
@@ -22,8 +22,6 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import * as RechartsPrimitive from "recharts";
-
-const EVENT_ID = "event123"; // Assuming a single event for now
 
 interface StatCardProps {
   title: string;
@@ -56,10 +54,11 @@ const rsvpChartConfig = {
 } satisfies RechartsPrimitive.ChartConfig;
 
 export default function DashboardClient() {
+  const [currentEvent, setCurrentEvent] = useState<EventData | null>(null);
   const [stats, setStats] = useState<RsvpStats | null>(null);
   const [invitations, setInvitations] = useState<InvitationData[]>([]);
-  const [eventDetails, setEventDetails] = useState<string>("");
-  const [guestListString, setGuestListString] = useState<string>("");
+  const [eventDetailsForAI, setEventDetailsForAI] = useState<string>("");
+  const [guestListStringForAI, setGuestListStringForAI] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [aiSummary, setAiSummary] = useState<TabulateRsvpStatsOutput | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -68,11 +67,12 @@ export default function DashboardClient() {
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
-      const data = await fetchAdminDashboardData(EVENT_ID);
+      const data = await fetchAdminDashboardData();
+      setCurrentEvent(data.event);
       setStats(data.stats);
       setInvitations(data.invitations);
-      setEventDetails(data.eventDetails);
-      setGuestListString(data.guestListString);
+      setEventDetailsForAI(data.eventDetails);
+      setGuestListStringForAI(data.guestListString);
       setIsLoading(false);
     }
     loadData();
@@ -93,13 +93,13 @@ export default function DashboardClient() {
   }, [stats, aiSummary]);
 
   const handleAiTabulation = async () => {
-    if (!eventDetails || !guestListString) {
+    if (!currentEvent || !eventDetailsForAI || !guestListStringForAI) {
       toast({ title: "Error", description: "Event data not loaded for AI tabulation.", variant: "destructive" });
       return;
     }
     setIsAiLoading(true);
     setAiSummary(null);
-    const result = await triggerAiTabulation({ eventDetails, guestList: guestListString });
+    const result = await triggerAiTabulation({ eventDetails: eventDetailsForAI, guestList: guestListStringForAI });
     if ("error" in result) {
       toast({ title: "AI Tabulation Error", description: result.error, variant: "destructive" });
     } else {
@@ -124,21 +124,24 @@ export default function DashboardClient() {
     }
 
     setIsAiLoading(true);
-    // Assuming resendInvitations is updated to take tokens or can find IDs from tokens
     const result = await resendInvitations(guestsToRemindTokens); 
     toast({ title: result.success ? "Success" : "Error", description: result.message, variant: result.success ? "default" : "destructive"});
     setIsAiLoading(false);
   };
 
   const handleExportCsv = async () => {
-    const result = await exportGuestsToCsv(EVENT_ID);
+    if (!currentEvent) {
+      toast({ title: "No Event Loaded", description: "Cannot export guests as no event data is loaded.", variant: "destructive" });
+      return;
+    }
+    const result = await exportGuestsToCsv(currentEvent.id);
     if (typeof result === 'string') {
       const blob = new Blob([result], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       if (link.download !== undefined) {
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
-        link.setAttribute('download', `rsvp_guests_${EVENT_ID}_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `rsvp_guests_${currentEvent.id}_${new Date().toISOString().split('T')[0]}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
@@ -179,11 +182,18 @@ export default function DashboardClient() {
     }
   };
 
-
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-primary">Admin Dashboard</h1>
+        <div>
+          <h1 className="text-3xl font-bold text-primary">Admin Dashboard</h1>
+          {currentEvent && (
+            <p className="text-lg text-muted-foreground flex items-center">
+              <CalendarClock className="mr-2 h-5 w-5" />
+              Showing stats for: <strong className="ml-1 text-foreground">{currentEvent.name}</strong> (Most Recent)
+            </p>
+          )}
+        </div>
         <Button asChild>
           <Link href="/admin/create-event">
             <PlusCircle className="mr-2 h-5 w-5" />
@@ -192,152 +202,167 @@ export default function DashboardClient() {
         </Button>
       </div>
       
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-        <StatCard title="Total Invited" value={invitations.length} icon={Users} description="Total number of guests invited." />
-        <StatCard title="Confirmed RSVPs" value={stats?.confirmed ?? 0} icon={CheckSquare} description={`${confirmedPercentage.toFixed(1)}% of capacity`} className="bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700" />
-        <StatCard title="Pending RSVPs" value={stats?.pending ?? 0} icon={MailWarning} description="Guests who haven't responded." className="bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-700"/>
-        <StatCard title="Declined RSVPs" value={stats?.declined ?? 0} icon={UserX} description="Guests who cannot attend." className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700"/>
-        <StatCard title="Waitlisted" value={stats?.waitlisted ?? 0} icon={Clock} description="Guests on the waitlist." className="bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700"/>
-      </div>
-
-      {stats && stats.totalSeats > 0 && (
-        <Card className="shadow-lg">
+      {!currentEvent && !isLoading ? (
+         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>Event Capacity</CardTitle>
-            <CardDescription>{`${stats.confirmed} / ${stats.totalSeats} seats filled`}</CardDescription>
+            <CardTitle>No Event Data</CardTitle>
           </CardHeader>
           <CardContent>
-            <Progress value={confirmedPercentage} className="w-full h-4" />
-            <p className="text-sm text-muted-foreground mt-2">{stats.availableSeats > 0 ? `${stats.availableSeats} seats remaining` : 'No seats remaining'}</p>
+            <p className="text-muted-foreground">No events found in the database. Create your first event to see statistics here!</p>
           </CardContent>
         </Card>
-      )}
+      ) : (
+        <>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+            <StatCard title="Total Invited" value={invitations.length} icon={Users} description="Total number of guests invited." />
+            <StatCard title="Confirmed RSVPs" value={stats?.confirmed ?? 0} icon={CheckSquare} description={`${confirmedPercentage.toFixed(1)}% of capacity`} className="bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700" />
+            <StatCard title="Pending RSVPs" value={stats?.pending ?? 0} icon={MailWarning} description="Guests who haven't responded." className="bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-700"/>
+            <StatCard title="Declined RSVPs" value={stats?.declined ?? 0} icon={UserX} description="Guests who cannot attend." className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700"/>
+            <StatCard title="Waitlisted" value={stats?.waitlisted ?? 0} icon={Clock} description="Guests on the waitlist." className="bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700"/>
+          </div>
 
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle>AI RSVP Analysis & Actions</CardTitle>
-          <CardDescription>Visualize RSVP distribution and use AI to tabulate stats and identify guests to remind.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {rsvpChartData.length > 0 ? (
-            <div className="h-[300px] w-full">
-              <ChartContainer config={rsvpChartConfig} className="h-full w-full">
-                <RechartsPrimitive.BarChart
-                  data={rsvpChartData}
-                  layout="horizontal" // Changed to horizontal
-                  margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
-                >
-                  <RechartsPrimitive.CartesianGrid strokeDasharray="3 3" vertical={false}/>
-                  <RechartsPrimitive.XAxis
-                    dataKey="category"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    tickFormatter={(value) => rsvpChartConfig[value as keyof typeof rsvpChartConfig]?.label || value}
-                  />
-                  <RechartsPrimitive.YAxis dataKey="guests" tickLine={false} axisLine={false} tickMargin={8} />
-                  <ChartTooltip
-                    cursor={{ fill: 'hsl(var(--muted))' }}
-                    content={<ChartTooltipContent />}
-                  />
-                  <RechartsPrimitive.Bar dataKey="guests" radius={[4, 4, 0, 0]} barSize={40}>
-                    {rsvpChartData.map((entry) => (
-                      <RechartsPrimitive.Cell key={`cell-${entry.category}`} fill={entry.fill} />
-                    ))}
-                  </RechartsPrimitive.Bar>
-                </RechartsPrimitive.BarChart>
-              </ChartContainer>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">No data available for chart yet. Load event data or run AI tabulation.</p>
+          {stats && stats.totalSeats > 0 && (
+            <Card className="shadow-lg">
+              <CardHeader>
+                <CardTitle>Event Capacity</CardTitle>
+                <CardDescription>{`${stats.confirmed} / ${stats.totalSeats} seats filled`}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Progress value={confirmedPercentage} className="w-full h-4" />
+                <p className="text-sm text-muted-foreground mt-2">{stats.availableSeats > 0 ? `${stats.availableSeats} seats remaining` : 'No seats remaining'}</p>
+              </CardContent>
+            </Card>
           )}
-          
-          <div className="flex space-x-4">
-            <Button onClick={handleAiTabulation} disabled={isAiLoading}>
-              <BarChart3 className="mr-2 h-4 w-4" /> {isAiLoading && !aiSummary ? 'Analyzing...' : 'Run AI Tabulation'}
-            </Button>
-            {aiSummary && aiSummary.guestsToRemind.length > 0 && (
-               <Button onClick={handleResendInvitations} disabled={isAiLoading} variant="outline">
-                <Send className="mr-2 h-4 w-4" /> {isAiLoading && aiSummary ? 'Sending...' : `Resend to ${aiSummary.guestsToRemind.length} Unresponsive`}
-              </Button>
-            )}
-          </div>
-          {isAiLoading && !aiSummary && <p className="text-sm text-muted-foreground">AI is processing the guest list...</p>}
-          {aiSummary && (
-            <Alert className="mt-4">
-              <BarChart3 className="h-4 w-4" />
-              <AlertTitle>AI Analysis Results</AlertTitle>
-              <AlertDescription>
-                <p><strong>Summary:</strong> {aiSummary.summary}</p>
-                {aiSummary.guestsToRemind.length > 0 ? (
-                  <>
-                    <p className="mt-2"><strong>Guests to remind ({aiSummary.guestsToRemind.length}):</strong></p>
-                    <ul className="list-disc list-inside text-sm max-h-32 overflow-y-auto">
-                      {aiSummary.guestsToRemind.map((guest, index) => <li key={index}>{guest}</li>)}
-                    </ul>
-                  </>
-                ) : (
-                  <p className="mt-2">No guests currently need a reminder according to AI analysis.</p>
+
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle>AI RSVP Analysis & Actions</CardTitle>
+              <CardDescription>Visualize RSVP distribution and use AI to tabulate stats and identify guests to remind.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {rsvpChartData.length > 0 ? (
+                <div className="h-[300px] w-full">
+                  <ChartContainer config={rsvpChartConfig} className="h-full w-full">
+                    <RechartsPrimitive.BarChart
+                      data={rsvpChartData}
+                      layout="horizontal"
+                      margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
+                    >
+                      <RechartsPrimitive.CartesianGrid strokeDasharray="3 3" vertical={false}/>
+                      <RechartsPrimitive.XAxis
+                        dataKey="category"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        tickFormatter={(value) => rsvpChartConfig[value as keyof typeof rsvpChartConfig]?.label || value}
+                      />
+                      <RechartsPrimitive.YAxis dataKey="guests" tickLine={false} axisLine={false} tickMargin={8} />
+                      <ChartTooltip
+                        cursor={{ fill: 'hsl(var(--muted))' }}
+                        content={<ChartTooltipContent />}
+                      />
+                      <RechartsPrimitive.Bar dataKey="guests" radius={[4, 4, 0, 0]} barSize={40}>
+                        {rsvpChartData.map((entry) => (
+                          <RechartsPrimitive.Cell key={`cell-${entry.category}`} fill={entry.fill} />
+                        ))}
+                      </RechartsPrimitive.Bar>
+                    </RechartsPrimitive.BarChart>
+                  </ChartContainer>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">No data available for chart yet. Load event data or run AI tabulation.</p>
+              )}
+              
+              <div className="flex space-x-4">
+                <Button onClick={handleAiTabulation} disabled={isAiLoading || !currentEvent}>
+                  <BarChart3 className="mr-2 h-4 w-4" /> {isAiLoading && !aiSummary ? 'Analyzing...' : 'Run AI Tabulation'}
+                </Button>
+                {aiSummary && aiSummary.guestsToRemind.length > 0 && (
+                  <Button onClick={handleResendInvitations} disabled={isAiLoading} variant="outline">
+                    <Send className="mr-2 h-4 w-4" /> {isAiLoading && aiSummary ? 'Sending...' : `Resend to ${aiSummary.guestsToRemind.length} Unresponsive`}
+                  </Button>
                 )}
-              </AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
-      
-      <Card className="shadow-lg">
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle>Guest List</CardTitle>
-            <Button onClick={handleExportCsv} variant="outline" size="sm">
-              <Download className="mr-2 h-4 w-4" /> Export CSV
-            </Button>
-          </div>
-          <CardDescription>Overview of all invited guests and their RSVP status.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Token</TableHead>
-                  <TableHead>RSVP'd At</TableHead>
-                  <TableHead>Visited Link</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invitations.map((inv) => (
-                  <TableRow key={inv.id}>
-                    <TableCell>{inv.guestName}</TableCell>
-                    <TableCell>{inv.guestEmail}</TableCell>
-                    <TableCell>
-                       <Badge 
-                        variant={getBadgeVariant(inv.status)} 
-                        className={cn(getBadgeClassName(inv.status))}
-                       >
-                        {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="truncate max-w-xs text-xs">{inv.uniqueToken}</TableCell>
-                    <TableCell>{inv.rsvpAt ? new Date(inv.rsvpAt).toLocaleDateString() : 'N/A'}</TableCell>
-                    <TableCell>{inv.visited ? 'Yes' : 'No'}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-           {invitations.length === 0 && <p className="text-center text-muted-foreground py-4">No invitations found for this event.</p>}
-        </CardContent>
-      </Card>
+              </div>
+              {isAiLoading && !aiSummary && <p className="text-sm text-muted-foreground">AI is processing the guest list...</p>}
+              {aiSummary && (
+                <Alert className="mt-4">
+                  <BarChart3 className="h-4 w-4" />
+                  <AlertTitle>AI Analysis Results</AlertTitle>
+                  <AlertDescription>
+                    <p><strong>Summary:</strong> {aiSummary.summary}</p>
+                    {aiSummary.guestsToRemind.length > 0 ? (
+                      <>
+                        <p className="mt-2"><strong>Guests to remind ({aiSummary.guestsToRemind.length}):</strong></p>
+                        <ul className="list-disc list-inside text-sm max-h-32 overflow-y-auto">
+                          {aiSummary.guestsToRemind.map((guest, index) => <li key={index}>{guest}</li>)}
+                        </ul>
+                      </>
+                    ) : (
+                      <p className="mt-2">No guests currently need a reminder according to AI analysis.</p>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+          
+          <Card className="shadow-lg">
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle>Guest List</CardTitle>
+                <Button onClick={handleExportCsv} variant="outline" size="sm" disabled={!currentEvent}>
+                  <Download className="mr-2 h-4 w-4" /> Export CSV
+                </Button>
+              </div>
+              <CardDescription>Overview of all invited guests and their RSVP status for the current event.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Token</TableHead>
+                      <TableHead>RSVP'd At</TableHead>
+                      <TableHead>Visited Link</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {invitations.length > 0 ? invitations.map((inv) => (
+                      <TableRow key={inv.id}>
+                        <TableCell>{inv.guestName}</TableCell>
+                        <TableCell>{inv.guestEmail}</TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={getBadgeVariant(inv.status)} 
+                            className={cn(getBadgeClassName(inv.status))}
+                          >
+                            {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="truncate max-w-xs text-xs">{inv.uniqueToken}</TableCell>
+                        <TableCell>{inv.rsvpAt ? new Date(inv.rsvpAt).toLocaleDateString() : 'N/A'}</TableCell>
+                        <TableCell>{inv.visited ? 'Yes' : 'No'}</TableCell>
+                      </TableRow>
+                    )) : (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-4">No invitations found for this event.</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
       
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Developer Notes / TODOs</CardTitle></CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-1">
             <p>• <strong>Firestore Setup:</strong> Ensure Firebase Admin SDK is configured with credentials in environment variables.</p>
-            <p>• <strong>Data Seeding:</strong> Add `event123` and guest data to Firestore for dashboard to function.</p>
             <p>• <strong>Create Event Flow:</strong> UI structure for event creation wizard is added. Needs full implementation of state, DB interactions, and AI email generation/sending logic.</p>
             <p>• <strong>Email Integration:</strong> Actual email sending needs SendGrid/Cloud Functions setup.</p>
             <p>• <strong>Public Events:</strong> "Make Public" feature and homepage display not implemented.</p>
