@@ -6,7 +6,7 @@ config(); // Ensure .env variables are loaded
 import * as Brevo from '@sendinblue/client';
 import type { EventData, InvitationData } from '@/types';
 
-const SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || "noreply@example.com"; 
+const SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || "equivocalrichie@gmail.com"; 
 // Consider adding BREVO_SENDER_NAME to .env as well
 const SENDER_NAME = process.env.BREVO_SENDER_NAME || "RSVP Now"; 
 
