@@ -1,5 +1,10 @@
 
 import admin from 'firebase-admin';
+import { config } from 'dotenv';
+
+// Attempt to load environment variables from .env file (and variants like .env.local)
+// Next.js usually handles this, but this is an explicit safeguard.
+config(); 
 
 // Ensure that GOOGLE_APPLICATION_CREDENTIALS environment variable is set
 // or provide the service account key directly.
@@ -131,3 +136,4 @@ export function convertTimestampsInObj<T extends Record<string, any>>(data: T): 
   }
   return newData;
 }
+
