@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -9,10 +9,21 @@ import { Badge } from "@/components/ui/badge";
 import { fetchAdminDashboardData, triggerAiTabulation, exportGuestsToCsv, resendInvitations } from '../actions';
 import type { InvitationData, RsvpStats, RsvpStatus } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock } from 'lucide-react'; // Added Clock for Waitlisted
+import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Progress } from '@/components/ui/progress';
+import { Progress } from "@/components/ui/progress";
 import type { TabulateRsvpStatsOutput } from '@/ai/flows/tabulate-rsvps';
+import { cn } from "@/lib/utils"; // Import cn from lib/utils
+
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+  type ChartConfig
+} from "@/components/ui/chart";
+import * as RechartsPrimitive from "recharts";
 
 const EVENT_ID = "event123"; // Assuming a single event for now
 
@@ -37,11 +48,15 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, descripti
   </Card>
 );
 
-// Helper cn function if not globally available or for standalone components
-// Ensure cn is available, or define it here:
- function cn(...inputs: (string | undefined | null | false)[]): string {
-   return inputs.filter(Boolean).join(' ');
- }
+// Chart configuration - defined outside component or memoized if dynamic
+const rsvpChartConfig = {
+  guests: { label: "Guests" }, // General label for the 'count' dataKey
+  Confirmed: { label: "Confirmed", color: "hsl(var(--chart-2))" },
+  Pending: { label: "Pending", color: "hsl(var(--chart-4))" },
+  Declined: { label: "Declined", color: "hsl(var(--destructive))" },
+  Waitlisted: { label: "Waitlisted", color: "hsl(var(--chart-5))" },
+  ToRemindAI: { label: "To Remind (AI)", color: "hsl(var(--chart-1))" },
+} satisfies ChartConfig;
 
 export default function DashboardClient() {
   const [stats, setStats] = useState<RsvpStats | null>(null);
@@ -65,6 +80,20 @@ export default function DashboardClient() {
     }
     loadData();
   }, []);
+
+  const rsvpChartData = useMemo(() => {
+    const data: { category: string; guests: number; fill: string }[] = [];
+    if (stats) {
+      data.push({ category: "Confirmed", guests: stats.confirmed, fill: "var(--color-Confirmed)" });
+      data.push({ category: "Pending", guests: stats.pending, fill: "var(--color-Pending)" });
+      data.push({ category: "Declined", guests: stats.declined, fill: "var(--color-Declined)" });
+      data.push({ category: "Waitlisted", guests: stats.waitlisted, fill: "var(--color-Waitlisted)" });
+    }
+    if (aiSummary && aiSummary.guestsToRemind.length > 0) {
+      data.push({ category: "ToRemindAI", guests: aiSummary.guestsToRemind.length, fill: "var(--color-ToRemindAI)" });
+    }
+    return data;
+  }, [stats, aiSummary]);
 
   const handleAiTabulation = async () => {
     if (!eventDetails || !guestListString) {
@@ -135,17 +164,17 @@ export default function DashboardClient() {
   
   const getBadgeVariant = (status: RsvpStatus) => {
     switch (status) {
-      case 'confirmed': return 'default'; // Typically green/positive
+      case 'confirmed': return 'default';
       case 'declining': return 'destructive';
       case 'pending': return 'secondary';
-      case 'waitlisted': return 'outline'; // Or a specific color like yellow/orange
+      case 'waitlisted': return 'outline';
       default: return 'secondary';
     }
   };
    const getBadgeClassName = (status: RsvpStatus) => {
     switch (status) {
       case 'confirmed': return 'bg-green-500 hover:bg-green-600';
-      case 'declining': return ''; // Destructive variant handles its own styling
+      case 'declining': return ''; 
       case 'pending': return 'bg-gray-400 hover:bg-gray-500';
       case 'waitlisted': return 'bg-yellow-500 hover:bg-yellow-600 text-black';
       default: return '';
@@ -181,9 +210,42 @@ export default function DashboardClient() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>AI RSVP Analysis & Actions</CardTitle>
-          <CardDescription>Use AI to tabulate stats and identify guests to remind. Then, resend invitations.</CardDescription>
+          <CardDescription>Visualize RSVP distribution and use AI to tabulate stats and identify guests to remind.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
+          {rsvpChartData.length > 0 ? (
+            <div className="h-[300px] w-full">
+              <ChartContainer config={rsvpChartConfig} className="h-full w-full">
+                <RechartsPrimitive.BarChart
+                  data={rsvpChartData}
+                  layout="horizontal"
+                  margin={{ top: 5, right: 5, left: -20, bottom: 5 }} // Adjust left margin for YAxis labels
+                >
+                  <RechartsPrimitive.CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <RechartsPrimitive.XAxis
+                    dataKey="category"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tickFormatter={(value) => rsvpChartConfig[value as keyof typeof rsvpChartConfig]?.label || value}
+                  />
+                  <RechartsPrimitive.YAxis dataKey="guests" tickLine={false} axisLine={false} tickMargin={8} />
+                  <ChartTooltip
+                    cursor={{ fill: 'hsl(var(--muted))' }}
+                    content={<ChartTooltipContent />}
+                  />
+                  <RechartsPrimitive.Bar dataKey="guests" radius={[4, 4, 0, 0]} barSize={40}>
+                    {rsvpChartData.map((entry) => (
+                      <RechartsPrimitive.Cell key={`cell-${entry.category}`} fill={entry.fill} />
+                    ))}
+                  </RechartsPrimitive.Bar>
+                </RechartsPrimitive.BarChart>
+              </ChartContainer>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">No data available for chart yet. Load event data or run AI tabulation.</p>
+          )}
+          
           <div className="flex space-x-4">
             <Button onClick={handleAiTabulation} disabled={isAiLoading}>
               <BarChart3 className="mr-2 h-4 w-4" /> {isAiLoading && !aiSummary ? 'Analyzing...' : 'Run AI Tabulation'}
@@ -247,7 +309,7 @@ export default function DashboardClient() {
                     <TableCell>
                        <Badge 
                         variant={getBadgeVariant(inv.status)} 
-                        className={getBadgeClassName(inv.status)}
+                        className={cn(getBadgeClassName(inv.status))}
                        >
                         {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                       </Badge>
@@ -278,3 +340,4 @@ export default function DashboardClient() {
     </div>
   );
 }
+
