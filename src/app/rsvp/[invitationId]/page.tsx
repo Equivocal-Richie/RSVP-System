@@ -1,7 +1,8 @@
+
 import { getEventById, getInvitationById } from '@/lib/db';
 import RsvpFormComponent from './components/RsvpForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CalendarDays, MapPin, Info, Users, CheckSquare, AlertTriangle } from 'lucide-react';
+import { CalendarDays, MapPin, Info, Users, CheckSquare, AlertTriangle, MailWarning } from 'lucide-react';
 import { format } from 'date-fns';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +40,7 @@ export default async function RsvpPage({ params }: RsvpPageProps) {
   }
 
   const availableSeats = event.seatLimit - event.confirmedGuestsCount;
+  const eventDate = invitation.rsvpAt ? new Date(event.date) : new Date(); // Fallback to prevent error if date is invalid
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -52,8 +54,19 @@ export default async function RsvpPage({ params }: RsvpPageProps) {
                   <CardDescription className="text-lg">You're invited! Please RSVP below.</CardDescription>
                 </div>
                 {invitation.status !== 'pending' && (
-                  <Badge variant={invitation.status === 'attending' ? 'default' : 'destructive'} className="ml-auto shrink-0">
-                    {invitation.status === 'attending' ? 'Attending' : 'Declined'}
+                  <Badge 
+                    variant={
+                      invitation.status === 'confirmed' ? 'default' : 
+                      invitation.status === 'declining' ? 'destructive' : 
+                      invitation.status === 'waitlisted' ? 'secondary' : // 'outline' or 'secondary' for waitlisted
+                      'outline' // fallback for pending if it were shown
+                    } 
+                    className={`ml-auto shrink-0 ${
+                      invitation.status === 'confirmed' ? 'bg-green-500 hover:bg-green-600' : 
+                      invitation.status === 'waitlisted' ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : ''
+                    }`}
+                  >
+                    {invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
                   </Badge>
                 )}
               </div>
@@ -70,7 +83,7 @@ export default async function RsvpPage({ params }: RsvpPageProps) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div className="flex items-center">
                   <CalendarDays className="h-5 w-5 mr-2 text-accent" />
-                  <span>Date: {format(new Date(event.date), "MMMM d, yyyy")}</span>
+                  <span>Date: {format(eventDate, "MMMM d, yyyy")}</span>
                 </div>
                 <div className="flex items-center">
                   <CalendarDays className="h-5 w-5 mr-2 text-accent" /> {/* Using CalendarDays for time too for consistency */}
@@ -82,13 +95,24 @@ export default async function RsvpPage({ params }: RsvpPageProps) {
                 </div>
                 <div className="flex items-center">
                   <Users className="h-5 w-5 mr-2 text-accent" />
-                  <span>Seats Available: {availableSeats > 0 ? `${availableSeats} / ${event.seatLimit}` : 'Event Full'}</span>
+                  <span>Seats Available: {availableSeats > 0 ? `${availableSeats} / ${event.seatLimit}` : 
+                                        (event.seatLimit === event.confirmedGuestsCount ? 'Event Full' : `${availableSeats} / ${event.seatLimit}` )}
+                  </span>
                 </div>
               </div>
               <div className="pt-2">
                 <h3 className="font-semibold flex items-center mb-1"><Info className="h-5 w-5 mr-2 text-accent" />Description</h3>
                 <p className="text-muted-foreground">{event.description}</p>
               </div>
+              {invitation.status === 'waitlisted' && (
+                <Alert variant="default" className="bg-yellow-50 dark:bg-yellow-900/30 border-yellow-500 dark:border-yellow-700">
+                  <MailWarning className="h-5 w-5 text-yellow-700 dark:text-yellow-500" />
+                  <AlertTitle className="text-yellow-800 dark:text-yellow-300">You are on the Waitlist</AlertTitle>
+                  <AlertDescription className="text-yellow-700 dark:text-yellow-400">
+                    Thank you for your interest! Spots are currently full. We'll notify you if a seat becomes available.
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         </div>

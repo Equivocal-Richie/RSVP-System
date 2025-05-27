@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -12,14 +13,14 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { submitRsvp, type RsvpFormState } from "../actions";
 import { useToast } from "@/hooks/use-toast";
-import type { InvitationData, EventData } from "@/types";
+import type { InvitationData, EventData, RsvpStatus } from "@/types";
 import { AlertCircle, CheckCircle2, PartyPopper, UserX } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const RsvpFormSchemaClient = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   email: z.string().email({ message: "Please enter a valid email address." }),
-  status: z.enum(["attending", "declining"]),
+  status: z.enum(["confirmed", "declining"]), // Changed from attending
 });
 
 type RsvpFormValues = z.infer<typeof RsvpFormSchemaClient>;
@@ -29,7 +30,7 @@ interface RsvpFormProps {
   event: EventData;
 }
 
-function SubmitButton({ currentStatus }: { currentStatus?: 'attending' | 'declining' }) {
+function SubmitButton({ currentStatus }: { currentStatus?: RsvpStatus }) {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending} className="w-full">
@@ -41,7 +42,7 @@ function SubmitButton({ currentStatus }: { currentStatus?: 'attending' | 'declin
 export default function RsvpFormComponent({ invitation, event }: RsvpFormProps) {
   const { toast } = useToast();
   const [formSubmittedSuccessfully, setFormSubmittedSuccessfully] = useState(false);
-  const [finalRsvpStatus, setFinalRsvpStatus] = useState<'attending' | 'declining' | null>(null);
+  const [finalRsvpStatus, setFinalRsvpStatus] = useState<RsvpStatus | null>(null);
 
   const initialState: RsvpFormState = { message: "", success: false };
   const [state, formAction] = useFormState(submitRsvp, initialState);
@@ -51,12 +52,13 @@ export default function RsvpFormComponent({ invitation, event }: RsvpFormProps) 
     defaultValues: {
       name: invitation.guestName || invitation.originalGuestName || "",
       email: invitation.guestEmail || invitation.originalGuestEmail || "",
-      status: invitation.status !== 'pending' ? invitation.status : undefined,
+      // Ensure status is 'confirmed' or 'declining' if it's not 'pending' or 'waitlisted'
+      status: (invitation.status === 'confirmed' || invitation.status === 'declining') ? invitation.status : undefined,
     },
   });
 
   const isEventFull = event.confirmedGuestsCount >= event.seatLimit;
-  const alreadyAttending = invitation.status === 'attending';
+  const alreadyConfirmed = invitation.status === 'confirmed';
 
   useEffect(() => {
     if (state.message) {
@@ -67,12 +69,12 @@ export default function RsvpFormComponent({ invitation, event }: RsvpFormProps) 
           variant: "default",
         });
         setFormSubmittedSuccessfully(true);
-        setFinalRsvpStatus(state.updatedInvitation?.status as 'attending' | 'declining');
+        setFinalRsvpStatus(state.updatedInvitation?.status as RsvpStatus);
         if (state.updatedInvitation) {
           form.reset({
             name: state.updatedInvitation.guestName,
             email: state.updatedInvitation.guestEmail,
-            status: state.updatedInvitation.status,
+            status: (state.updatedInvitation.status === 'confirmed' || state.updatedInvitation.status === 'declining') ? state.updatedInvitation.status : undefined,
           });
         }
       } else {
@@ -88,25 +90,24 @@ export default function RsvpFormComponent({ invitation, event }: RsvpFormProps) 
     }
   }, [state, toast, form]);
 
-  if (formSubmittedSuccessfully || (invitation.status !== 'pending' && !form.formState.isDirty && !state.message /* to allow re-submission if error occurred */)) {
+  if (formSubmittedSuccessfully || ((invitation.status === 'confirmed' || invitation.status === 'declining') && !form.formState.isDirty && !state.message)) {
     const currentDisplayStatus = finalRsvpStatus || invitation.status;
     return (
-      <Alert variant={currentDisplayStatus === 'attending' ? "default" : "destructive"} className="shadow-md">
-        {currentDisplayStatus === 'attending' ? 
+      <Alert variant={currentDisplayStatus === 'confirmed' ? "default" : "destructive"} className="shadow-md">
+        {currentDisplayStatus === 'confirmed' ? 
           <PartyPopper className="h-5 w-5" /> : 
           <UserX className="h-5 w-5" />
         }
-        <AlertTitle>{currentDisplayStatus === 'attending' ? "You're Attending!" : "RSVP Recorded"}</AlertTitle>
+        <AlertTitle>{currentDisplayStatus === 'confirmed' ? "You're Confirmed!" : "RSVP Recorded"}</AlertTitle>
         <AlertDescription>
-          {currentDisplayStatus === 'attending' 
-            ? `Thank you, ${form.getValues().name}! We've recorded your RSVP as attending. We look forward to seeing you at ${event.name}.`
+          {currentDisplayStatus === 'confirmed' 
+            ? `Thank you, ${form.getValues().name}! We've recorded your RSVP as confirmed. We look forward to seeing you at ${event.name}.`
             : `Thank you, ${form.getValues().name}. We've recorded your RSVP as declining for ${event.name}.`}
+          {(currentDisplayStatus === 'waitlisted') && `You have been added to the waitlist for ${event.name}. We will notify you if a spot becomes available.`}
           <p className="mt-2 text-xs">You can update your RSVP on this page if your plans change, subject to availability.</p>
         </AlertDescription>
          <Button onClick={() => {
            setFormSubmittedSuccessfully(false);
-           // Reset state to allow form display
-           // This is a bit of a hack; ideally useFormState would have a reset
            state.message = ""; 
            state.success = false;
            state.errors = undefined;
@@ -159,19 +160,19 @@ export default function RsvpFormComponent({ invitation, event }: RsvpFormProps) 
             <Label>Will you attend?</Label>
             <RadioGroup
               name="status"
-              onValueChange={(value) => form.setValue("status", value as "attending" | "declining", { shouldValidate: true })}
-              defaultValue={invitation.status !== 'pending' ? invitation.status : undefined}
+              onValueChange={(value) => form.setValue("status", value as "confirmed" | "declining", { shouldValidate: true })}
+              defaultValue={(invitation.status === 'confirmed' || invitation.status === 'declining') ? invitation.status : undefined}
               className="flex space-x-4"
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem 
-                  value="attending" 
-                  id="attending" 
-                  disabled={isEventFull && !alreadyAttending}
+                  value="confirmed" 
+                  id="confirmed" 
+                  disabled={isEventFull && !alreadyConfirmed}
                 />
-                <Label htmlFor="attending" className={isEventFull && !alreadyAttending ? "text-muted-foreground cursor-not-allowed" : ""}>
+                <Label htmlFor="confirmed" className={isEventFull && !alreadyConfirmed ? "text-muted-foreground cursor-not-allowed" : ""}>
                   Yes, I'll attend
-                  {isEventFull && !alreadyAttending && <span className="text-xs block">(Event full)</span>}
+                  {isEventFull && !alreadyConfirmed && <span className="text-xs block">(Event full)</span>}
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
@@ -186,7 +187,7 @@ export default function RsvpFormComponent({ invitation, event }: RsvpFormProps) 
               <p className="text-sm text-destructive">{state.errors._form.join(", ")}</p>
             )}
           </div>
-           {isEventFull && !alreadyAttending && (
+           {isEventFull && !alreadyConfirmed && (
             <Alert variant="default" className="bg-secondary">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Event Capacity Reached</AlertTitle>

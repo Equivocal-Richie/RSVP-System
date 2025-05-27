@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { fetchAdminDashboardData, triggerAiTabulation, exportGuestsToCsv, resendInvitations } from '../actions';
-import type { InvitationData, RsvpStats } from '@/types';
+import type { InvitationData, RsvpStats, RsvpStatus } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX } from 'lucide-react';
+import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock } from 'lucide-react'; // Added Clock for Waitlisted
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import type { TabulateRsvpStatsOutput } from '@/ai/flows/tabulate-rsvps';
@@ -36,6 +36,12 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, descripti
     </CardContent>
   </Card>
 );
+
+// Helper cn function if not globally available or for standalone components
+// Ensure cn is available, or define it here:
+ function cn(...inputs: (string | undefined | null | false)[]): string {
+   return inputs.filter(Boolean).join(' ');
+ }
 
 export default function DashboardClient() {
   const [stats, setStats] = useState<RsvpStats | null>(null);
@@ -82,9 +88,6 @@ export default function DashboardClient() {
       toast({ title: "No Guests to Remind", description: "AI analysis found no guests needing reminders, or analysis not run.", variant: "default" });
       return;
     }
-    // In a real app, guestsToRemind might be full guest objects or detailed identifiers.
-    // Here it's a list of strings, assumed to be guest names or emails from the prompt.
-    // We'll map them to invitation IDs if possible.
     const guestsToRemindIds = aiSummary.guestsToRemind
       .map(guestIdentifier => invitations.find(inv => inv.guestName === guestIdentifier || inv.guestEmail === guestIdentifier)?.id)
       .filter(Boolean) as string[];
@@ -94,7 +97,7 @@ export default function DashboardClient() {
         return;
     }
 
-    setIsAiLoading(true); // Reuse for this loading state
+    setIsAiLoading(true);
     const result = await resendInvitations(guestsToRemindIds);
     toast({ title: result.success ? "Success" : "Error", description: result.message, variant: result.success ? "default" : "destructive"});
     setIsAiLoading(false);
@@ -129,16 +132,37 @@ export default function DashboardClient() {
   }
 
   const confirmedPercentage = stats && stats.totalSeats > 0 ? (stats.confirmed / stats.totalSeats) * 100 : 0;
+  
+  const getBadgeVariant = (status: RsvpStatus) => {
+    switch (status) {
+      case 'confirmed': return 'default'; // Typically green/positive
+      case 'declining': return 'destructive';
+      case 'pending': return 'secondary';
+      case 'waitlisted': return 'outline'; // Or a specific color like yellow/orange
+      default: return 'secondary';
+    }
+  };
+   const getBadgeClassName = (status: RsvpStatus) => {
+    switch (status) {
+      case 'confirmed': return 'bg-green-500 hover:bg-green-600';
+      case 'declining': return ''; // Destructive variant handles its own styling
+      case 'pending': return 'bg-gray-400 hover:bg-gray-500';
+      case 'waitlisted': return 'bg-yellow-500 hover:bg-yellow-600 text-black';
+      default: return '';
+    }
+  };
+
 
   return (
     <div className="space-y-8">
       <h1 className="text-3xl font-bold text-primary">Admin Dashboard</h1>
       
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <StatCard title="Total Invited" value={invitations.length} icon={Users} description="Total number of guests invited." />
         <StatCard title="Confirmed RSVPs" value={stats?.confirmed ?? 0} icon={CheckSquare} description={`${confirmedPercentage.toFixed(1)}% of capacity`} className="bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700" />
         <StatCard title="Pending RSVPs" value={stats?.pending ?? 0} icon={MailWarning} description="Guests who haven't responded." className="bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-700"/>
         <StatCard title="Declined RSVPs" value={stats?.declined ?? 0} icon={UserX} description="Guests who cannot attend." className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700"/>
+        <StatCard title="Waitlisted" value={stats?.waitlisted ?? 0} icon={Clock} description="Guests on the waitlist." className="bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700"/>
       </div>
 
       {stats && stats.totalSeats > 0 && (
@@ -221,11 +245,11 @@ export default function DashboardClient() {
                     <TableCell>{inv.guestName}</TableCell>
                     <TableCell>{inv.guestEmail}</TableCell>
                     <TableCell>
-                      <Badge variant={
-                        inv.status === 'attending' ? 'default' : 
-                        inv.status === 'declining' ? 'destructive' : 'secondary'
-                      } className={inv.status === 'attending' ? 'bg-green-500 hover:bg-green-600' : ''}>
-                        {inv.status}
+                       <Badge 
+                        variant={getBadgeVariant(inv.status)} 
+                        className={getBadgeClassName(inv.status)}
+                       >
+                        {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                       </Badge>
                     </TableCell>
                     <TableCell>{inv.rsvpAt ? new Date(inv.rsvpAt).toLocaleDateString() : 'N/A'}</TableCell>
@@ -242,19 +266,15 @@ export default function DashboardClient() {
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Developer Notes / TODOs</CardTitle></CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-1">
-            <p>• <strong>Email Integration:</strong> Actual email sending for (re-)invitations needs SendGrid/Firebase Functions setup.</p>
+            <p>• <strong>Firestore Setup:</strong> Ensure Firebase Admin SDK is configured with credentials in environment variables.</p>
+            <p>• <strong>Data Seeding:</strong> Manually add initial event (ID: {EVENT_ID}) and guest data to Firestore for the app to function.</p>
+            <p>• <strong>Email Integration:</strong> Actual email sending for (re-)invitations needs SendGrid/Firebase Functions setup (Email Logs table is ready).</p>
             <p>• <strong>Guest Management:</strong> Full CRUD for guests (edit name/email, add/delete) not implemented.</p>
             <p>• <strong>Authentication:</strong> Admin dashboard is currently public. Add authentication.</p>
-            <p>• <strong>Error Handling:</strong> More robust error handling and edge case management.</p>
-            <p>• <strong>Multiple Events:</strong> UI currently assumes a single event (ID: {EVENT_ID}).</p>
+            <p>• <strong>Error Handling:</strong> More robust error handling and edge case management (e.g. Firestore offline).</p>
+            <p>• <strong>Waitlist UI:</strong> Form doesn't auto-waitlist yet; 'waitlisted' status primarily for DB schema & admin use for now.</p>
         </CardContent>
       </Card>
     </div>
   );
 }
-
-// Helper cn function if not globally available or for standalone components
-function cn(...inputs: (string | undefined | null | false)[]): string {
-  return inputs.filter(Boolean).join(' ');
-}
-

@@ -1,13 +1,14 @@
+
 "use server";
 
 import { z } from "zod";
 import { getEventById, getInvitationById, updateInvitationRsvp } from "@/lib/db";
-import type { InvitationData } from "@/types";
+import type { InvitationData, RsvpStatus } from "@/types";
 
 const RsvpFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   email: z.string().email({ message: "Please enter a valid email address." }),
-  status: z.enum(["attending", "declining"], { message: "Please select your attendance status." }),
+  status: z.enum(["confirmed", "declining"], { message: "Please select your attendance status." }),
   invitationId: z.string(),
 });
 
@@ -50,27 +51,22 @@ export async function submitRsvp(
       return { success: false, message: "Invalid invitation link." };
     }
 
-    // Check if already RSVP'd with a definitive status
-    // Allow changing from attending to declining or vice-versa, or updating details if status is same
-    // if (invitation.status !== 'pending' && invitation.status === status && invitation.guestName === name && invitation.guestEmail === email) {
-    //   return { success: false, message: "You have already RSVP'd with these details." };
-    // }
-
     const event = await getEventById(invitation.eventId);
     if (!event) {
       return { success: false, message: "Event not found for this invitation." };
     }
 
-    if (status === "attending" && invitation.status !== "attending" && event.confirmedGuestsCount >= event.seatLimit) {
+    if (status === "confirmed" && invitation.status !== "confirmed" && event.confirmedGuestsCount >= event.seatLimit) {
       return { success: false, message: "Sorry, the event is currently full. Please contact the organizer if you believe this is an error." };
     }
     
+    // The status passed to updateInvitationRsvp is 'confirmed' or 'declining'
     const result = await updateInvitationRsvp(invitationId, status, name, email);
 
     if (result.success) {
       return { 
         success: true, 
-        message: status === "attending" ? "Thank you for confirming your attendance!" : "Your RSVP (declined) has been recorded. Thank you!",
+        message: status === "confirmed" ? "Thank you for confirming your attendance!" : "Your RSVP (declined) has been recorded. Thank you!",
         updatedInvitation: result.invitation
       };
     } else {
