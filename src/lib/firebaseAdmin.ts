@@ -16,6 +16,7 @@ config();
 
 let dbInstance: admin.firestore.Firestore;
 let fieldValueInstance: typeof admin.firestore.FieldValue;
+let timestampInstance: typeof admin.firestore.Timestamp; // Added for consistency
 let initializationAttempted = false;
 let initializationSuccessful = false;
 
@@ -70,7 +71,8 @@ if (initializationSuccessful && admin.apps.length > 0 && admin.apps[0]) {
   try {
     dbInstance = admin.firestore();
     fieldValueInstance = admin.firestore.FieldValue;
-    console.log("Firestore services (db, FieldValue) accessed successfully.");
+    timestampInstance = admin.firestore.Timestamp; // Initialize Timestamp class reference
+    console.log("Firestore services (db, FieldValue, Timestamp) accessed successfully.");
   } catch (e: any) {
       // This would be very unusual: app initialized but firestore() fails.
       console.error("CRITICAL ERROR: Failed to access Firestore services even after Firebase Admin SDK reported successful initialization. Error:", e.message);
@@ -83,36 +85,36 @@ if (initializationSuccessful && admin.apps.length > 0 && admin.apps[0]) {
 
 // If, after all checks, we don't have a successful initialization for Firestore, throw a clear error.
 // This makes `db` and `FieldValue` exports fail loudly if they can't be used.
-if (!initializationSuccessful || !dbInstance!) {
+if (!initializationSuccessful || !dbInstance! || !fieldValueInstance! || !timestampInstance!) {
   let errorMessage = "CRITICAL FAILURE: Firebase Admin SDK could not be initialized or Firestore services are unavailable. ";
   if (initializationAttempted && !initializationSuccessful) {
     errorMessage += "An initialization attempt was made but FAILED. Review the server logs above for specific credential errors (e.g., malformed private key, incorrect project ID/client email) or other Firebase Admin SDK issues.";
   } else if (!initializationAttempted && !admin.apps.length) { 
     // This implies the case where env vars were missing and no attempt was made because !admin.apps.length was true, but then no credentials were found
     errorMessage += "Initialization was SKIPPED due to missing environment variables (GOOGLE_APPLICATION_CREDENTIALS or the set of FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY).";
-  } else if (initializationSuccessful && !dbInstance!) {
-    errorMessage += "SDK initialization appeared successful, but accessing Firestore services (like admin.firestore()) FAILED. This is an unexpected state. Check logs for specific errors from Firestore."
+  } else if (initializationSuccessful && (!dbInstance! || !fieldValueInstance! || !timestampInstance!)) {
+    errorMessage += "SDK initialization appeared successful, but accessing core Firestore services FAILED. This is an unexpected state. Check logs for specific errors from Firestore."
   } else {
     // Fallback for any other unhandled state
      errorMessage += "The reason for failure is unclear from the current state, please check logs thoroughly."
   }
-  errorMessage += " As a result, Firestore (db) will not be available to the application.";
+  errorMessage += " As a result, Firestore services will not be available to the application.";
   
   // The console.warn/error above should have given specifics. This is the final stop-gap.
   throw new Error(errorMessage);
 }
 
 // Exports - TypeScript will require these to be definitely assigned.
-// The throw new Error above ensures that if initializationSuccessful is false or dbInstance is not set, this part of the code is not reached.
+// The throw new Error above ensures that if initializationSuccessful is false or instances are not set, this part of the code is not reached.
 export const db: admin.firestore.Firestore = dbInstance!;
 export const FieldValue: typeof admin.firestore.FieldValue = fieldValueInstance!;
-export type Timestamp = admin.firestore.Timestamp;
+export const Timestamp: typeof admin.firestore.Timestamp = timestampInstance!; // Changed from 'export type' to 'export const'
 
 // Helper to convert Firestore Timestamp to ISO string or return null
-export const timestampToIsoString = (timestamp: Timestamp | TimestampString | undefined | null): TimestampString | null => {
+export const timestampToIsoString = (timestamp: admin.firestore.Timestamp | TimestampString | undefined | null): TimestampString | null => {
   if (!timestamp) return null;
   if (typeof timestamp === 'string') return timestamp; // Already a string
-  if (timestamp instanceof admin.firestore.Timestamp) {
+  if (timestamp instanceof admin.firestore.Timestamp) { // Use admin.firestore.Timestamp for instanceof check
     return timestamp.toDate().toISOString();
   }
   // Handle cases where it might be a plain object from Firestore (e.g., { _seconds: ..., _nanoseconds: ... })
@@ -124,16 +126,18 @@ export const timestampToIsoString = (timestamp: Timestamp | TimestampString | un
   return null;
 };
 
+// Type alias for string representation of Timestamp for client-side use
+export type TimestampString = string;
+
 // Helper to convert multiple Timestamps in an object
 export function convertTimestampsInObj<T extends Record<string, any>>(data: T): T {
   const newData = { ...data };
   for (const key in newData) {
     if (newData[key] instanceof admin.firestore.Timestamp || (typeof newData[key] === 'object' && newData[key] !== null && '_seconds' in newData[key] && '_nanoseconds' in newData[key])) {
-      newData[key] = timestampToIsoString(newData[key] as Timestamp) as any;
+      newData[key] = timestampToIsoString(newData[key] as admin.firestore.Timestamp) as any;
     } else if (typeof newData[key] === 'object' && newData[key] !== null && !Array.isArray(newData[key])) { // Check for plain object and not array
       newData[key] = convertTimestampsInObj(newData[key]); // Recurse for nested objects
     }
   }
   return newData;
 }
-
