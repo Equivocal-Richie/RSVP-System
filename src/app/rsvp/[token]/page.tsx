@@ -1,6 +1,5 @@
 
-
-import { getEventById, getInvitationByToken } from '@/lib/db';
+import { getEventById, getInvitationByToken, updateInvitationRsvp } from '@/lib/db';
 import RsvpFormComponent from './components/RsvpForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CalendarDays, MapPin, Info, Users, CheckSquare, AlertTriangle, MailWarning, Smile, Palette, Building } from 'lucide-react';
@@ -10,13 +9,13 @@ import { Badge } from '@/components/ui/badge';
 
 interface RsvpPageProps {
   params: {
-    token: string; // Changed from invitationId to token
+    token: string;
   };
 }
 
 export default async function RsvpPage({ params }: RsvpPageProps) {
   const { token } = params;
-  const invitation = await getInvitationByToken(token); // Use new DB function
+  const invitation = await getInvitationByToken(token); 
 
   if (!invitation) {
     return (
@@ -44,7 +43,8 @@ export default async function RsvpPage({ params }: RsvpPageProps) {
   }
 
   const availableSeats = event.seatLimit > 0 ? event.seatLimit - event.confirmedGuestsCount : Infinity;
-  const eventDate = event.date ? new Date(event.date) : new Date();
+  // Ensure event.date is treated as a string (ISO format) from db.ts conversion
+  const eventDate = event.date ? new Date(event.date) : new Date(); 
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -76,14 +76,25 @@ export default async function RsvpPage({ params }: RsvpPageProps) {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Image 
-                src={event.eventImagePath || "https://placehold.co/800x300.png"} 
-                alt={event.name}
-                width={800} 
-                height={300} 
-                className="rounded-md object-cover w-full shadow-md"
-                data-ai-hint="event venue celebration"
-              />
+              {event.eventImagePath ? (
+                <Image 
+                  src={event.eventImagePath} 
+                  alt={event.name}
+                  width={800} 
+                  height={300} 
+                  className="rounded-md object-cover w-full shadow-md"
+                  data-ai-hint="event venue celebration"
+                />
+              ) : (
+                 <Image 
+                  src={"https://placehold.co/800x300.png"} 
+                  alt={event.name}
+                  width={800} 
+                  height={300} 
+                  className="rounded-md object-cover w-full shadow-md"
+                  data-ai-hint="event placeholder"
+                />
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div className="flex items-center">
                   <CalendarDays className="h-5 w-5 mr-2 text-accent" />
@@ -140,7 +151,6 @@ export default async function RsvpPage({ params }: RsvpPageProps) {
   );
 }
 
-// Regenerate metadata function if it depends on invitationId/token
 export async function generateMetadata({ params }: RsvpPageProps) {
   const { token } = params;
   const invitation = await getInvitationByToken(token);

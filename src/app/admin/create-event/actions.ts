@@ -6,61 +6,114 @@ import { createEvent, createInvitations, createEmailLog, getEventById } from '@/
 import type { EventData, GuestInput, EventMood, InvitationData, EmailStatus } from '@/types';
 import { generatePersonalizedInvitation, type GenerateInvitationTextInput, type GenerateInvitationTextOutput as AIGenerateOutput } from '@/ai/flows/generate-invitation-text-flow';
 import { sendInvitationEmail } from '@/lib/emailService';
+import { uploadEventImage } from '@/lib/storage';
 
 
+// This Zod schema is for validating the extracted string/number fields from FormData
+// File uploads are handled separately.
 const CreateEventServerSchema = z.object({
-  name: z.string().min(1),
-  description: z.string().min(1),
-  date: z.string(), 
-  time: z.string(),
-  location: z.string().min(1),
-  mood: z.enum(['formal', 'casual', 'celebratory', 'professional', 'themed']),
-  seatLimit: z.number(), 
-  organizerEmail: z.string().email().optional(),
+  name: z.string().min(1, "Event name is required."),
+  description: z.string().min(1, "Event description is required."),
+  date: z.string().refine(val => !isNaN(Date.parse(val)), { message: "Invalid date format." }), // ISO String
+  time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)."),
+  location: z.string().min(1, "Location is required."),
+  mood: z.enum(['formal', 'casual', 'celebratory', 'professional', 'themed'], { message: "Invalid event mood." }),
+  seatLimit: z.preprocess(val => parseInt(String(val), 10), z.number()), // Parse to number
+  organizerEmail: z.string().email("Invalid organizer email.").optional().or(z.literal("")),
+  // eventImagePath is handled by file upload, not direct client input for the path
   isPublic: z.boolean().optional().default(false),
-  eventImagePath: z.string().optional(), // Optional, not fully implemented for storage yet
 });
 
-const CreateEventAndInvitationsSchema = z.object({
-  eventData: CreateEventServerSchema,
-  guests: z.array(z.object({
-    name: z.string().min(1),
-    email: z.string().email(),
-  })).min(1, "At least one guest is required."),
-});
+const GuestsSchema = z.array(z.object({
+  name: z.string().min(1, "Guest name is required."),
+  email: z.string().email("Invalid guest email."),
+})).min(1, "At least one guest is required.");
 
-export type CreateEventAndInvitationsInput = z.infer<typeof CreateEventAndInvitationsSchema>;
 
 export async function createEventAndProcessInvitations(
-  input: CreateEventAndInvitationsInput
+  formData: FormData
 ): Promise<{ success: boolean; message: string; eventId?: string; invitationIds?: string[]; emailResults?: any[] }> {
-  const validatedInput = CreateEventAndInvitationsSchema.safeParse(input);
-  if (!validatedInput.success) {
-    console.error("Server-side validation failed:", validatedInput.error.flatten());
-    return { success: false, message: "Invalid input: " + JSON.stringify(validatedInput.error.flatten().fieldErrors) };
-  }
+  
+  const eventDetailsRaw = {
+    name: formData.get("name"),
+    description: formData.get("description"),
+    date: formData.get("date"),
+    time: formData.get("time"),
+    location: formData.get("location"),
+    mood: formData.get("mood"),
+    seatLimit: formData.get("seatLimit"),
+    organizerEmail: formData.get("organizerEmail") || "", // Default to empty string if null/undefined
+  };
 
-  const { eventData, guests } = validatedInput.data;
+  const validatedEventDetails = CreateEventServerSchema.safeParse(eventDetailsRaw);
+  if (!validatedEventDetails.success) {
+    console.error("Server-side event details validation failed:", validatedEventDetails.error.flatten());
+    return { success: false, message: "Invalid event data: " + JSON.stringify(validatedEventDetails.error.flatten().fieldErrors) };
+  }
+  const eventDataFromForm = validatedEventDetails.data;
+
+  const guestsRaw = formData.get("guests");
+  let guests: GuestInput[] = [];
+  if (typeof guestsRaw === 'string') {
+    try {
+      guests = JSON.parse(guestsRaw);
+    } catch (e) {
+      return { success: false, message: "Invalid guest data format." };
+    }
+  }
+  const validatedGuests = GuestsSchema.safeParse(guests);
+  if(!validatedGuests.success) {
+    console.error("Server-side guest list validation failed:", validatedGuests.error.flatten());
+    return { success: false, message: "Invalid guest data: " + JSON.stringify(validatedGuests.error.flatten().fieldErrors)};
+  }
+  const guestList = validatedGuests.data;
+
+
+  const eventImageFile = formData.get("eventImage") as File | null;
+  let eventImagePath: string | undefined = undefined;
   const emailResults = [];
 
   try {
-    const newEvent = await createEvent(eventData);
+    // Placeholder for event ID generation before image upload if needed for filename
+    // For now, we'll create event first, then upload image if eventId is part of filename.
+    // Or, generate UUID for image name, upload, then create event with URL.
+    // Let's try: upload image first if present, then create event.
+
+    const tempEventIdForImage = `temp-${Date.now()}`; // Or a UUID
+
+    if (eventImageFile && eventImageFile.size > 0) {
+      // Pass eventId as part of filename or path if needed, or generate unique name
+      const uploadedImageUrl = await uploadEventImage(eventImageFile, tempEventIdForImage);
+      if (uploadedImageUrl) {
+        eventImagePath = uploadedImageUrl;
+      } else {
+        // Optional: decide if image upload failure is critical
+        console.warn("Event image upload failed, proceeding without event image.");
+      }
+    }
+
+    const eventToCreate: Omit<EventData, 'id' | 'confirmedGuestsCount' | 'createdAt' | 'updatedAt'> = {
+      ...eventDataFromForm,
+      date: eventDataFromForm.date, // Already an ISO string
+      mood: eventDataFromForm.mood as EventMood,
+      eventImagePath: eventImagePath, // Add the uploaded image path
+      isPublic: false, // Default
+    };
+
+    const newEvent = await createEvent(eventToCreate);
     if (!newEvent || !newEvent.id) {
       return { success: false, message: "Failed to create event in database." };
     }
 
-    const createdInvitations = await createInvitations(newEvent.id, guests);
+    const createdInvitations = await createInvitations(newEvent.id, guestList);
     if (!createdInvitations || createdInvitations.length === 0) {
-      // Potentially roll back event creation or mark it as draft
       return { success: false, message: "Event created, but failed to create invitations." };
     }
     
-    // Fetch the full event details again to ensure all fields are current for email generation
     const currentEventDetails = await getEventById(newEvent.id);
     if (!currentEventDetails) {
         return { success: false, message: "Failed to fetch created event details for sending emails." };
     }
-
 
     console.log(`Event ${newEvent.id} created. ${createdInvitations.length} invitations created. Processing emails...`);
 
@@ -82,9 +135,9 @@ export async function createEventAndProcessInvitations(
         const emailResult = await sendInvitationEmail(invitation, currentEventDetails, aiEmailContent);
         
         if (emailResult.success) {
-          emailStatus = 'sent'; // Or 'delivered' if Brevo confirms, but 'sent' is safer immediate status
+          emailStatus = 'sent';
           brevoMessageId = emailResult.messageId;
-          sentAtValue = new Date().toISOString(); // Or FieldValue.serverTimestamp() if createEmailLog handles it
+          sentAtValue = new Date().toISOString();
           console.log(`Email sent to ${invitation.guestEmail} for event ${newEvent.id}. Message ID: ${brevoMessageId}`);
         } else {
           emailStatus = 'failed';
@@ -106,7 +159,7 @@ export async function createEventAndProcessInvitations(
         status: emailStatus,
         brevoMessageId: brevoMessageId,
         errorMessage: errorMessage,
-        sentAt: sentAtValue, // Pass null if queued/failed before actual send attempt, or timestamp if sent
+        sentAt: sentAtValue,
       });
     }
 
@@ -149,7 +202,7 @@ export async function generateInvitationText(input: GenerateInvitationTextClient
     const aiInput: GenerateInvitationTextInput = {
       eventName: input.eventName,
       eventDescription: input.eventDescription,
-      eventMood: input.eventMood,
+      eventMood: input.mood, // Ensure this matches EventMood type
       guestName: input.guestName,
     };
 
@@ -172,4 +225,3 @@ export async function generateInvitationText(input: GenerateInvitationTextClient
     return { success: false, message };
   }
 }
-

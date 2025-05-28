@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -11,14 +11,13 @@ import { EventDetailsStep } from './EventDetailsStep';
 import { GuestListStep } from './GuestListStep';
 import { PreviewSendStep } from './PreviewSendStep';
 import { ConfirmationStep } from './ConfirmationStep';
-import type { EventData, GuestInput, EventMood } from '@/types';
-import { createEventAndProcessInvitations, type CreateEventAndInvitationsInput } from '../actions';
+import type { GuestInput, EventMood } from '@/types';
+import { createEventAndProcessInvitations } from '../actions'; // No type import for input needed here
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
 const MAX_EVENT_NAME_LENGTH = 70;
 
-// Define the object shape for event details (client-side schema)
 const eventDetailsObjectSchema = z.object({
   name: z.string().min(3, "Event name is too short").max(MAX_EVENT_NAME_LENGTH, `Event name is too long (max ${MAX_EVENT_NAME_LENGTH} chars)`),
   description: z.string().min(10, "Description is too short"),
@@ -27,12 +26,11 @@ const eventDetailsObjectSchema = z.object({
   location: z.string().min(3, "Location is too short"),
   mood: z.enum(['formal', 'casual', 'celebratory', 'professional', 'themed'], { required_error: "Please select an event mood." }),
   hasSeatLimit: z.enum(['yes', 'no']),
-  seatLimitNumber: z.number().optional().default(0), // Renamed from seatLimit to avoid conflict with server schema expectation
+  seatLimitNumber: z.number().optional().default(0),
   eventImage: z.custom<File>((val) => val instanceof File, "Please upload an event image.").optional(),
   organizerEmail: z.string().email("Please enter a valid organizer email for inquiries.").optional().or(z.literal("")),
 });
 
-// Define the object shape for guest list
 const guestListObjectSchema = z.object({
   guests: z.array(z.object({
     name: z.string().min(2, "Guest name is too short"),
@@ -40,10 +38,8 @@ const guestListObjectSchema = z.object({
   })).min(1, "Please add at least one guest."),
 });
 
-// Merge the ZodObject schemas
 const combinedObjectSchema = eventDetailsObjectSchema.merge(guestListObjectSchema);
 
-// Apply refinements to the combined schema
 const wizardSchema = combinedObjectSchema.refine(data => {
   if (data.hasSeatLimit === 'yes') {
     return data.seatLimitNumber != null && data.seatLimitNumber > 0;
@@ -63,6 +59,8 @@ export function CreateEventWizard() {
   const [isLoading, setIsLoading] = useState(false);
   const [createdEventId, setCreatedEventId] = useState<string | null>(null);
   const { toast } = useToast();
+  const formRef = useRef<HTMLFormElement>(null);
+
 
   const methods = useForm<CreateEventFormData>({
     resolver: zodResolver(wizardSchema),
@@ -70,7 +68,6 @@ export function CreateEventWizard() {
     defaultValues: {
       name: "",
       description: "",
-      // date: undefined, // Let date picker handle initial undefined state
       time: "18:00",
       location: "",
       mood: 'casual',
@@ -81,7 +78,7 @@ export function CreateEventWizard() {
     },
   });
 
-  const { handleSubmit, trigger, getValues } = methods;
+  const { trigger, getValues, control } = methods; // control is needed for FormProvider
 
   const handleNext = async () => {
     let isValid = false;
@@ -110,34 +107,35 @@ export function CreateEventWizard() {
     }
   };
 
-  const onSubmit = async (data: CreateEventFormData) => {
+  // This function will be called by the form's onSubmit
+  const processFormSubmission = async (data: CreateEventFormData) => {
     setIsLoading(true);
+
+    const formData = new FormData();
+    formData.append("name", data.name);
+    formData.append("description", data.description);
+    formData.append("date", data.date.toISOString());
+    formData.append("time", data.time);
+    formData.append("location", data.location);
+    formData.append("mood", data.mood);
+    formData.append("seatLimit", data.hasSeatLimit === 'yes' ? (data.seatLimitNumber || 0).toString() : "-1");
+    if (data.organizerEmail) {
+      formData.append("organizerEmail", data.organizerEmail);
+    }
+    if (data.eventImage) {
+      formData.append("eventImage", data.eventImage);
+    }
+    formData.append("guests", JSON.stringify(data.guests)); // Send guests as JSON string
+
     try {
-      // Prepare data for the server action
-      const serverInput: CreateEventAndInvitationsInput = {
-        eventData: {
-          name: data.name,
-          description: data.description,
-          date: data.date.toISOString(), // Convert Date to ISO string
-          time: data.time,
-          location: data.location,
-          mood: data.mood as EventMood,
-          seatLimit: data.hasSeatLimit === 'yes' ? (data.seatLimitNumber || 0) : -1,
-          organizerEmail: data.organizerEmail || undefined,
-          isPublic: false, // Default, can be changed later
-          // eventImagePath: data.eventImage ? await handleImageUpload(data.eventImage) : undefined, // Future: handle image upload
-        },
-        guests: data.guests,
-      };
-      
-      const result = await createEventAndProcessInvitations(serverInput);
+      const result = await createEventAndProcessInvitations(formData);
 
       if (result.success && result.eventId) {
         setCreatedEventId(result.eventId);
         setCurrentStep(totalSteps); 
         toast({
           title: "Event Created Successfully!",
-          description: "Invitations are being processed.",
+          description: result.message || "Invitations are being processed.",
         });
       } else {
         toast({
@@ -167,7 +165,8 @@ export function CreateEventWizard() {
           <CardTitle className="text-2xl text-center text-primary">Create New Event (Step {currentStep} of {totalSteps})</CardTitle>
           <Progress value={progressValue} className="w-full mt-2 h-3" />
         </CardHeader>
-        <form onSubmit={handleSubmit(onSubmit)}>
+        {/* We use react-hook-form's handleSubmit to trigger validation before calling our custom submission logic */}
+        <form ref={formRef} onSubmit={methods.handleSubmit(processFormSubmission)} noValidate>
           <CardContent className="min-h-[400px] py-6">
             {currentStep === 1 && <EventDetailsStep />}
             {currentStep === 2 && <GuestListStep />}
@@ -186,12 +185,13 @@ export function CreateEventWizard() {
               </Button>
             )}
             {currentStep === 3 && (
+              // This button will now trigger the form's onSubmit
               <Button type="submit" disabled={isLoading} className="ml-auto">
                 {isLoading ? "Processing..." : "Create Event & Prepare Invitations"}
               </Button>
             )}
-             {currentStep === totalSteps && ( // No buttons on confirmation step or a "Go to Dashboard" button
-              <div className="ml-auto"></div> // Placeholder to keep footer structure if needed
+             {currentStep === totalSteps && (
+              <div className="ml-auto"></div> 
             )}
           </CardFooter>
         </form>
