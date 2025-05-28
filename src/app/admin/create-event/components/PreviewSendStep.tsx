@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Mail, Info, Sparkles, RefreshCw } from 'lucide-react';
 import type { CreateEventFormData } from './CreateEventWizard';
-import { generateInvitationText, type GenerateInvitationTextClientInput, type GenerateInvitationTextClientOutput } from '../actions';
+import { generatePersonalizedInvitationText, type GenerateInvitationTextClientInput, type GenerateInvitationTextClientOutput } from '../actions';
 import type { GuestInput, EventMood } from '@/types';
 
 interface PreviewSendStepProps {
@@ -37,7 +37,7 @@ export function PreviewSendStep({ eventData, guestList }: PreviewSendStepProps) 
         eventMood: eventData.mood as EventMood, 
         guestName: firstGuest.name,
       };
-      const result = await generateInvitationText(inputForAI);
+      const result = await generatePersonalizedInvitationText(inputForAI);
 
       if (result.success) {
         setSampleEmail(result);
