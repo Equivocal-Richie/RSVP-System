@@ -38,9 +38,10 @@ export async function createEvent(eventData: Omit<EventData, 'id' | 'confirmedGu
       date: Timestamp.fromDate(new Date(eventData.date)), 
       id: newEventRef.id, 
       _confirmedGuestsCount: 0, 
+      isPublic: false, // Default to not public
+      publicRsvpLink: null, // Default to null
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-      isPublic: eventData.isPublic ?? false, // Ensure default
     };
     await newEventRef.set(firestoreWriteData);
     
@@ -50,6 +51,7 @@ export async function createEvent(eventData: Omit<EventData, 'id' | 'confirmedGu
     const fetchedData = docSnap.data();
     if (!fetchedData) return null;
 
+    // Ensure all fields that might be undefined on write but have defaults are handled
     const clientEventData: EventData = {
       id: docSnap.id,
       name: fetchedData.name,
@@ -134,6 +136,43 @@ export async function getEventById(id: string): Promise<EventData | null> {
   }
 }
 
+
+export async function updateEventPublicStatus(eventId: string, publicRsvpToken: string): Promise<boolean> {
+  try {
+    const eventRef = db.collection(EVENTS_COLLECTION).doc(eventId);
+    await eventRef.update({
+      isPublic: true,
+      publicRsvpLink: publicRsvpToken, // Store the token, e.g., eventId or a UUID
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return true;
+  } catch (error) {
+    console.error(`Error updating public status for event ${eventId}:`, error);
+    return false;
+  }
+}
+
+export async function getPublicEvents(): Promise<EventData[]> {
+  try {
+    const snapshot = await db.collection(EVENTS_COLLECTION)
+      .where('isPublic', '==', true)
+      .orderBy('date', 'desc') // Order by event date, most recent public first
+      .get();
+      
+    return snapshot.docs.map(doc => convertTimestampsInObj({ id: doc.id, ...doc.data() } as EventData));
+  } catch (error) {
+    console.error("Error fetching public events:", error);
+    return [];
+  }
+}
+
+// Use eventId as the public token for simplicity for now
+export async function getEventByPublicLinkToken(token: string): Promise<EventData | null> {
+    // Assuming token is the eventId for public links like /rsvp/public/[eventId]
+    return getEventById(token); 
+}
+
+
 // --- Invitation Functions ---
 
 export async function createInvitations(eventId: string, guests: GuestInput[]): Promise<InvitationData[]> {
@@ -162,24 +201,18 @@ export async function createInvitations(eventId: string, guests: GuestInput[]): 
         createdAt: new Date().toISOString(), 
         updatedAt: new Date().toISOString(),
         rsvpAt: null,
-        visited: false, // Ensure visited is part of the returned object immediately
+        visited: false, 
     });
   }
 
   try {
     await batch.commit();
-    // Fetch the created invitations to get server-generated timestamps
     const fetchedInvitations: InvitationData[] = [];
-    for (const guestData of createdInvitations) { // Use the temporary client-side createdInvitations to find docs
-        // This is a simplification. In a real scenario, you might query by a batch ID or fetch docs individually if IDs are known.
-        // For now, we'll assume the client-side constructed object is good enough for immediate return if timestamps are handled by convertTimestampsInObj.
-        // To get actual server timestamps, you'd need to re-fetch.
-        // This example assumes the data structure is largely correct and relies on `convertTimestampsInObj` for any server-generated TS.
+    for (const guestData of createdInvitations) { 
          const docSnap = await db.collection(INVITATIONS_COLLECTION).doc(guestData.id).get();
          if (docSnap.exists) {
             fetchedInvitations.push(convertTimestampsInObj({ id: docSnap.id, ...docSnap.data() } as InvitationData));
          } else {
-            // Fallback to the initially constructed object if fetch fails (less ideal)
             fetchedInvitations.push(convertTimestampsInObj(guestData));
          }
     }
@@ -269,7 +302,7 @@ export async function updateInvitationRsvp(
         } else if (oldStatus === 'confirmed' && status === 'declining') {
           newConfirmedGuestCount = Math.max(0, newConfirmedGuestCount - 1); 
         }
-        // Only update _confirmedGuestsCount if it changed.
+        
         if (newConfirmedGuestCount !== currentConfirmedGuestCount) {
            transaction.update(eventRef, { _confirmedGuestsCount: newConfirmedGuestCount, updatedAt: FieldValue.serverTimestamp() });
         }
@@ -318,6 +351,49 @@ export async function updateInvitationRsvp(
   }
 }
 
+// Placeholder for public RSVP submissions - this needs more robust implementation
+export async function createPublicRsvpInvitation(
+  eventId: string,
+  guestName: string,
+  guestEmail: string
+): Promise<InvitationData | null> {
+  const uniqueToken = randomUUID();
+  const newInvitationRef = db.collection(INVITATIONS_COLLECTION).doc();
+
+  const newInvitationData = {
+    id: newInvitationRef.id,
+    uniqueToken,
+    eventId,
+    guestName,
+    guestEmail,
+    status: 'confirmed' as RsvpStatus, // Or 'pending_public_confirmation'
+    visited: true, // Public link assumes immediate visit
+    originalGuestName: guestName,
+    originalGuestEmail: guestEmail,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    rsvpAt: FieldValue.serverTimestamp(),
+  };
+
+  try {
+    await newInvitationRef.set(newInvitationData);
+    
+    // Important: Increment event's _confirmedGuestsCount
+    const eventRef = db.collection(EVENTS_COLLECTION).doc(eventId);
+    await eventRef.update({
+      _confirmedGuestsCount: FieldValue.increment(1),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    
+    const docSnap = await newInvitationRef.get();
+    return convertTimestampsInObj(docSnap.data() as InvitationData);
+  } catch (error) {
+    console.error('Error creating public RSVP invitation:', error);
+    return null;
+  }
+}
+
+
 export async function getAllInvitationsForEvent(eventId: string): Promise<InvitationData[]> {
   try {
     const eventDoc = await db.collection(EVENTS_COLLECTION).doc(eventId).get();
@@ -332,9 +408,13 @@ export async function getAllInvitationsForEvent(eventId: string): Promise<Invita
       .get();
       
     return snapshot.docs.map(doc => convertTimestampsInObj({ id: doc.id, ...doc.data() } as InvitationData));
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Error fetching all invitations for event ${eventId}:`, error);
-    return [];
+     if (error.code === 9 && error.message.includes("requires an index")) { // FAILED_PRECONDITION
+      console.error("Firestore composite index missing for `getAllInvitationsForEvent`. Please create it in the Firebase console.");
+      // The error message from Firestore usually includes a direct link to create the index.
+    }
+    return []; // Return empty on error to prevent crashes, admin dashboard will show "no invitations"
   }
 }
 
@@ -357,7 +437,6 @@ export async function getEventStats(eventId: string): Promise<RsvpStats | null> 
     }
     
     const totalSeats = event.seatLimit <= 0 ? Infinity : event.seatLimit;
-    // Use event.confirmedGuestsCount directly as it's now reliably fetched by getEventById
     const availableSeats = totalSeats === Infinity ? Infinity : Math.max(0, totalSeats - event.confirmedGuestsCount);
 
     return {
@@ -423,14 +502,14 @@ export async function createReservation(
 
 // --- Email Log Functions ---
 export async function createEmailLog(
-  logEntry: Omit<EmailLogData, 'id' | 'createdAt' | 'sentAt'> & { sentAt?: any } // sentAt can be FieldValue or null
+  logEntry: Omit<EmailLogData, 'id' | 'createdAt' | 'sentAt'> & { sentAt?: any } 
 ): Promise<EmailLogData | null> {
   try {
     const newLogRef = db.collection(EMAIL_LOGS_COLLECTION).doc();
     const logDataForDb = {
       ...logEntry,
       id: newLogRef.id,
-      sentAt: logEntry.sentAt === null ? null : (logEntry.sentAt || FieldValue.serverTimestamp()), // Allow explicit null or default to server TS
+      sentAt: logEntry.sentAt === null ? null : (logEntry.sentAt || FieldValue.serverTimestamp()), 
       createdAt: FieldValue.serverTimestamp(), 
     };
     await newLogRef.set(logDataForDb);
@@ -448,3 +527,4 @@ export async function createEmailLog(
   }
 }
 
+    

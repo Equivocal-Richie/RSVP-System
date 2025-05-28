@@ -2,26 +2,23 @@
 "use server";
 
 import { z } from "zod";
-import { createEvent, createInvitations, createEmailLog, getEventById } from '@/lib/db';
+import { createEvent, createInvitations, createEmailLog, getEventById, updateEventPublicStatus } from '@/lib/db';
 import type { EventData, GuestInput, EventMood, InvitationData, EmailStatus } from '@/types';
 import { generatePersonalizedInvitation, type GenerateInvitationTextInput, type GenerateInvitationTextOutput as AIGenerateOutput } from '@/ai/flows/generate-invitation-text-flow';
 import { sendInvitationEmail } from '@/lib/emailService';
 import { uploadEventImage } from '@/lib/storage';
 
 
-// This Zod schema is for validating the extracted string/number fields from FormData
-// File uploads are handled separately.
 const CreateEventServerSchema = z.object({
   name: z.string().min(1, "Event name is required."),
   description: z.string().min(1, "Event description is required."),
-  date: z.string().refine(val => !isNaN(Date.parse(val)), { message: "Invalid date format." }), // ISO String
+  date: z.string().refine(val => !isNaN(Date.parse(val)), { message: "Invalid date format." }), 
   time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)."),
   location: z.string().min(1, "Location is required."),
   mood: z.enum(['formal', 'casual', 'celebratory', 'professional', 'themed'], { message: "Invalid event mood." }),
-  seatLimit: z.preprocess(val => parseInt(String(val), 10), z.number()), // Parse to number
+  seatLimit: z.preprocess(val => parseInt(String(val), 10), z.number()), 
   organizerEmail: z.string().email("Invalid organizer email.").optional().or(z.literal("")),
-  // eventImagePath is handled by file upload, not direct client input for the path
-  isPublic: z.boolean().optional().default(false),
+  isPublic: z.boolean().optional().default(false), // Added for completeness, though default in DB is false
 });
 
 const GuestsSchema = z.array(z.object({
@@ -42,7 +39,8 @@ export async function createEventAndProcessInvitations(
     location: formData.get("location"),
     mood: formData.get("mood"),
     seatLimit: formData.get("seatLimit"),
-    organizerEmail: formData.get("organizerEmail") || "", // Default to empty string if null/undefined
+    organizerEmail: formData.get("organizerEmail") || "", 
+    isPublic: formData.get("isPublic") === 'true', // Assuming isPublic might come from form
   };
 
   const validatedEventDetails = CreateEventServerSchema.safeParse(eventDetailsRaw);
@@ -74,30 +72,23 @@ export async function createEventAndProcessInvitations(
   const emailResults = [];
 
   try {
-    // Placeholder for event ID generation before image upload if needed for filename
-    // For now, we'll create event first, then upload image if eventId is part of filename.
-    // Or, generate UUID for image name, upload, then create event with URL.
-    // Let's try: upload image first if present, then create event.
-
-    const tempEventIdForImage = `temp-${Date.now()}`; // Or a UUID
+    const tempEventIdForImage = `temp-${Date.now()}`; 
 
     if (eventImageFile && eventImageFile.size > 0) {
-      // Pass eventId as part of filename or path if needed, or generate unique name
       const uploadedImageUrl = await uploadEventImage(eventImageFile, tempEventIdForImage);
       if (uploadedImageUrl) {
         eventImagePath = uploadedImageUrl;
       } else {
-        // Optional: decide if image upload failure is critical
         console.warn("Event image upload failed, proceeding without event image.");
       }
     }
 
     const eventToCreate: Omit<EventData, 'id' | 'confirmedGuestsCount' | 'createdAt' | 'updatedAt'> = {
       ...eventDataFromForm,
-      date: eventDataFromForm.date, // Already an ISO string
+      date: eventDataFromForm.date, 
       mood: eventDataFromForm.mood as EventMood,
-      eventImagePath: eventImagePath, // Add the uploaded image path
-      isPublic: false, // Default
+      eventImagePath: eventImagePath, 
+      isPublic: eventDataFromForm.isPublic ?? false, 
     };
 
     const newEvent = await createEvent(eventToCreate);
@@ -173,11 +164,11 @@ export async function createEventAndProcessInvitations(
 
   } catch (error) {
     console.error("Error in createEventAndProcessInvitations:", error);
-    let errorMessage = "An unexpected error occurred while processing the event and invitations.";
+    let errorMessageText = "An unexpected error occurred while processing the event and invitations.";
     if (error instanceof Error) {
-        errorMessage = error.message;
+        errorMessageText = error.message;
     }
-    return { success: false, message: errorMessage, emailResults };
+    return { success: false, message: errorMessageText, emailResults };
   }
 }
 
@@ -197,12 +188,12 @@ export interface GenerateInvitationTextClientOutput {
   message?: string;
 }
 
-export async function generateInvitationText(input: GenerateInvitationTextClientInput): Promise<GenerateInvitationTextClientOutput> {
+export async function generatePersonalizedInvitationText(input: GenerateInvitationTextClientInput): Promise<GenerateInvitationTextClientOutput> {
   try {
     const aiInput: GenerateInvitationTextInput = {
       eventName: input.eventName,
       eventDescription: input.eventDescription,
-      eventMood: input.mood, // Ensure this matches EventMood type
+      eventMood: input.eventMood, 
       guestName: input.guestName,
     };
 
@@ -225,3 +216,28 @@ export async function generateInvitationText(input: GenerateInvitationTextClient
     return { success: false, message };
   }
 }
+
+export async function makeEventPublicServerAction(eventId: string): Promise<{ success: boolean; message: string; publicLink?: string }> {
+  if (!eventId) {
+    return { success: false, message: "Event ID is required." };
+  }
+  try {
+    // For simplicity, the public RSVP token will be the eventId itself.
+    // The public link will be constructed on the client or in the component that needs it, e.g., /rsvp/public/${eventId}
+    const publicRsvpToken = eventId; 
+    const success = await updateEventPublicStatus(eventId, publicRsvpToken);
+    if (success) {
+      // Construct the full public link to return if needed, though client can also do this
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002';
+      const publicLink = `${appUrl}/rsvp/public/${publicRsvpToken}`;
+      return { success: true, message: "Event successfully made public.", publicLink };
+    } else {
+      return { success: false, message: "Failed to make event public in the database." };
+    }
+  } catch (error) {
+    console.error(`Error making event ${eventId} public:`, error);
+    return { success: false, message: "An unexpected error occurred while making the event public." };
+  }
+}
+
+    
