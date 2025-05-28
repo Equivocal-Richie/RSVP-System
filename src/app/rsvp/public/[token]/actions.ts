@@ -2,38 +2,24 @@
 "use server";
 
 import { z } from "zod";
-import { getEventById, createPublicRsvpInvitation } from "@/lib/db"; // Using eventId as token for now
-import type { InvitationData, EventData } from "@/types"; // Re-use existing RsvpFormState
-
-// Copied from src/app/rsvp/[token]/actions.ts - can be refactored to a shared type
-export type PublicRsvpFormState = {
-  message: string;
-  success: boolean;
-  errors?: {
-    name?: string[];
-    email?: string[];
-    status?: string[];
-    _form?: string[]; 
-  };
-  updatedInvitation?: InvitationData; // Or a similar structure for public RSVP confirmation
-};
+import { getEventById, createPublicRsvpInvitation } from "@/lib/db";
+import type { InvitationData } from "@/types"; // Ensure RsvpFormState is compatible or define a public specific one
+import type { RsvpFormState } from "../../[token]/actions"; // Using the same state type for now
 
 const PublicRsvpFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   email: z.string().email({ message: "Please enter a valid email address." }),
-  status: z.enum(["confirmed", "declining"], { message: "Please select your attendance status." }),
-  eventId: z.string(), // eventId will be submitted from the form
+  eventId: z.string().min(1, { message: "Event ID is missing." }),
+  // Status is not explicitly submitted by user for public RSVP, it's implicitly 'confirmed'
 });
 
-
 export async function submitPublicRsvp(
-  prevState: PublicRsvpFormState,
+  prevState: RsvpFormState,
   formData: FormData
-): Promise<PublicRsvpFormState> {
+): Promise<RsvpFormState> {
   const validatedFields = PublicRsvpFormSchema.safeParse({
     name: formData.get("name"),
     email: formData.get("email"),
-    status: formData.get("status"),
     eventId: formData.get("eventId"),
   });
 
@@ -45,52 +31,29 @@ export async function submitPublicRsvp(
     };
   }
 
-  const { eventId, name, email, status } = validatedFields.data;
-
-  if (status === "declining") {
-    // For public RSVP, declining doesn't really mean anything unless they were already on a list.
-    // We can just acknowledge.
-    return {
-      success: true,
-      message: "Thank you. Your preference not to attend has been noted.",
-    };
-  }
+  const { eventId, name, email } = validatedFields.data;
 
   try {
-    const event = await getEventById(eventId);
-    if (!event || !event.isPublic) {
-      return { success: false, message: "Event not found or not open for public RSVP." };
-    }
+    // Event existence and seat limit checks will be handled by createPublicRsvpInvitation
+    const result = await createPublicRsvpInvitation(eventId, name, email);
 
-    // Seat limit check
-    if (event.seatLimit > 0 && event.confirmedGuestsCount >= event.seatLimit) {
-      // TODO: Implement waitlisting logic for public RSVPs if desired.
-      return { 
-        success: false, 
-        message: "Sorry, the event is currently full. Please contact the organizer or check back later." 
-      };
-    }
-    
-    // Create a new "invitation-like" record for this public RSVP
-    const newInvitation = await createPublicRsvpInvitation(eventId, name, email);
-
-    if (newInvitation) {
+    if (result.success && result.invitation) {
       return { 
         success: true, 
-        message: "Thank you for confirming your attendance! Your spot has been reserved.",
-        updatedInvitation: newInvitation // This represents the newly created public RSVP record
+        message: result.message, // "RSVP successful! You're confirmed."
+        updatedInvitation: result.invitation // Pass the new invitation data
       };
     } else {
-      return { success: false, message: "Failed to record your public RSVP. Please try again." };
+      return { 
+        success: false, 
+        message: result.message || "Failed to submit public RSVP. Please try again." 
+      };
     }
-
   } catch (error) {
     console.error("Public RSVP submission error:", error);
     return {
       success: false,
-      message: "An unexpected error occurred while processing your RSVP. Please try again later.",
+      message: "An unexpected error occurred during public RSVP. Please try again later.",
     };
   }
 }
-
-    

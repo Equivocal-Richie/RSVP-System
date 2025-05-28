@@ -57,7 +57,20 @@ export async function sendInvitationEmail(
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
           .container { max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
           .header { font-size: 24px; color: #3F51B5; /* primary color */ }
-          .button { display: inline-block; padding: 10px 20px; margin: 20px 0; background-color: #3F51B5; color: white; text-decoration: none; border-radius: 5px; }
+          .button { 
+            display: inline-block; 
+            padding: 10px 20px; 
+            margin: 20px 0; 
+            background-color: #3F51B5; /* explicit primary color */ 
+            color: #FFFFFF !important; /* Ensure white text, important for overrides */ 
+            text-decoration: none; 
+            border-radius: 5px; 
+            font-weight: bold;
+          }
+          .button-text {
+             color: #FFFFFF !important; /* Ensure white text for the link itself */
+             text-decoration: none;
+          }
           .footer { margin-top: 20px; font-size: 0.9em; color: #777; }
         </style>
       </head>
@@ -70,7 +83,7 @@ export async function sendInvitationEmail(
           <p><strong>Date:</strong> ${new Date(event.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
           <p><strong>Time:</strong> ${event.time}</p>
           <p><strong>Location:</strong> ${event.location}</p>
-          <p><a href="${rsvpLink}" class="button">Click here to RSVP</a></p>
+          <p><a href="${rsvpLink}" class="button"><span class="button-text">Click here to RSVP</span></a></p>
           <p>If the button above doesn't work, please copy and paste the following link into your browser:</p>
           <p><a href="${rsvpLink}">${rsvpLink}</a></p>
           <p>${emailContent.closing || 'We hope to see you there!'}</p>
