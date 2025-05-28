@@ -2,7 +2,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react"; // Changed from react-dom's useFormState
+import { useFormStatus } from "react-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -68,7 +69,8 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
 
   const chosenFormAction = isPublicRsvp ? submitPublicRsvp : submitRsvp;
   const initialState: RsvpFormState = { message: "", success: false };
-  const [state, formAction] = useFormState(chosenFormAction, initialState);
+  // Updated to use React.useActionState
+  const [state, formAction] = useActionState(chosenFormAction, initialState); 
 
   const form = useForm<RsvpFormValues>({
     resolver: zodResolver(RsvpFormSchemaClient),
@@ -232,7 +234,7 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
           {state.errors?._form && ( 
             <p className="text-sm text-destructive">{state.errors._form.join(", ")}</p>
           )}
-           {isEventEffectivelyFull && !alreadyConfirmed && (
+           {isEventEffectivelyFull && !alreadyConfirmed && !isPublicRsvp && ( // Only show this specific message for private invites when full
             <Alert variant="default" className="bg-secondary">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Event Capacity Reached</AlertTitle>
@@ -241,6 +243,15 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
               </AlertDescription>
             </Alert>
           )}
+           {isEventEffectivelyFull && isPublicRsvp && ( // Different message for public RSVPs when full
+             <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Event Currently Full</AlertTitle>
+              <AlertDescription>
+                We're sorry, but this event has reached its maximum capacity and cannot accept new reservations at this time.
+              </AlertDescription>
+            </Alert>
+           )}
         </CardContent>
         <CardFooter>
           <SubmitButton currentStatus={invitation?.status} isPublicRsvp={isPublicRsvp} />
@@ -249,3 +260,4 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
     </Card>
   );
 }
+
