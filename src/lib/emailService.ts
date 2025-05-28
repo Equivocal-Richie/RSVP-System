@@ -11,6 +11,7 @@ const SENDER_NAME = process.env.BREVO_SENDER_NAME || "RSVP Now";
 const OTP_EXPIRY_MINUTES = 10; // Consistent with auth/actions.ts
 
 const apiInstance = new Brevo.TransactionalEmailsApi();
+let brevoApiKeyConfigured = false;
 
 if (!process.env.BREVO_API_KEY) {
   console.warn(
@@ -19,6 +20,8 @@ if (!process.env.BREVO_API_KEY) {
 } else {
     const apiKey = apiInstance.authentications['apiKey'];
     apiKey.apiKey = process.env.BREVO_API_KEY!;
+    brevoApiKeyConfigured = true;
+    console.log("Brevo API Key has been configured.");
 }
 
 if (!process.env.NEXT_PUBLIC_APP_URL) {
@@ -39,7 +42,7 @@ export async function sendInvitationEmail(
   event: EventData,
   emailContent: EmailContent
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  if (!process.env.BREVO_API_KEY) {
+  if (!brevoApiKeyConfigured) {
     console.warn("Brevo API Key not configured. Skipping invitation email send.");
     return { success: false, error: "Brevo API Key not configured." };
   }
@@ -99,13 +102,14 @@ export async function sendInvitationEmail(
 
   try {
     const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log('Brevo API called successfully for invitation email. Returned data: ', JSON.stringify(data));
+    console.log('Brevo API called successfully for invitation email. Returned data: ', JSON.stringify(data.body)); // Log body for messageId
     return { success: true, messageId: data.body.messageId };
   } catch (error: any) {
-    console.error('Error sending invitation email via Brevo: ', error.response ? error.response.body : error.message);
+    const errorMessage = error.response?.body?.message || JSON.stringify(error.response?.body) || error.message || "Unknown Brevo API error";
+    console.error('Error sending invitation email via Brevo: ', errorMessage, 'Full error object:', JSON.stringify(error, null, 2));
     return { 
       success: false, 
-      error: error.response ? error.response.body?.message || JSON.stringify(error.response.body) : error.message 
+      error: errorMessage
     };
   }
 }
@@ -116,7 +120,7 @@ export async function sendOtpEmail(
   recipientName: string,
   otp: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!process.env.BREVO_API_KEY) {
+  if (!brevoApiKeyConfigured) {
     console.warn("Brevo API Key not configured. Skipping OTP email send.");
     return { success: false, error: "Brevo API Key not configured." };
   }
@@ -151,17 +155,16 @@ export async function sendOtpEmail(
   `;
 
   try {
-    await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log(`OTP email sent successfully to ${recipientEmail}.`);
+    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log(`OTP email sent successfully to ${recipientEmail}. Brevo response: ${JSON.stringify(data.body)}`);
     return { success: true };
   } catch (error: any) {
-    console.error(`Error sending OTP email to ${recipientEmail} via Brevo: `, error.response ? error.response.body : error.message);
+    const errorMessage = error.response?.body?.message || JSON.stringify(error.response?.body) || error.message || "Unknown Brevo API error";
+    console.error(`Error sending OTP email to ${recipientEmail} via Brevo: `, errorMessage, 'Full error object:', JSON.stringify(error, null, 2));
     return { 
       success: false, 
-      error: error.response ? error.response.body?.message || JSON.stringify(error.response.body) : error.message 
+      error: errorMessage
     };
   }
 }
-
-
     
