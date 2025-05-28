@@ -1,9 +1,8 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
-import { useActionState } from "react"; // Changed from react-dom's useFormState
-import { useFormStatus } from "react-dom";
+import React, { useEffect, useState, useTransition } from "react"; // Added useTransition
+import { useActionState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -13,10 +12,10 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { submitRsvp, type RsvpFormState } from "../actions";
-import { submitPublicRsvp } from "../../public/[token]/actions"; 
+import { submitPublicRsvp } from "../../public/[token]/actions";
 import { useToast } from "@/hooks/use-toast";
 import type { InvitationData, EventData, RsvpStatus } from "@/types";
-import { AlertCircle, PartyPopper, UserX, Info } from "lucide-react"; 
+import { AlertCircle, PartyPopper, UserX, Info } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 
@@ -24,14 +23,13 @@ import { cn } from "@/lib/utils";
 const RsvpFormSchemaClient = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   email: z.string().email({ message: "Please enter a valid email address." }),
-  status: z.enum(["confirmed", "declining"]).optional(), // Optional for public RSVP where it's implicit
-  // For public RSVP, token might not be part of client-side Zod schema if handled differently
+  status: z.enum(["confirmed", "declining"]).optional(),
 });
 
 type RsvpFormValues = z.infer<typeof RsvpFormSchemaClient>;
 
 interface RsvpFormProps {
-  invitation: InvitationData | { 
+  invitation: InvitationData | {
     id: string;
     uniqueToken: string;
     eventId: string;
@@ -43,11 +41,10 @@ interface RsvpFormProps {
     updatedAt?: string;
   };
   event: EventData;
-  isPublicRsvp?: boolean; 
+  isPublicRsvp?: boolean;
 }
 
-function SubmitButton({ currentStatus, isPublicRsvp }: { currentStatus?: RsvpStatus, isPublicRsvp?: boolean }) {
-  const { pending } = useFormStatus();
+function SubmitButton({ currentStatus, isPublicRsvp, isSubmitting }: { currentStatus?: RsvpStatus, isPublicRsvp?: boolean, isSubmitting: boolean }) {
   let buttonText = "Submit RSVP";
   if (isPublicRsvp) {
     buttonText = "Reserve My Spot";
@@ -56,8 +53,8 @@ function SubmitButton({ currentStatus, isPublicRsvp }: { currentStatus?: RsvpSta
   }
 
   return (
-    <Button type="submit" disabled={pending} className="w-full">
-      {pending ? "Submitting..." : buttonText}
+    <Button type="submit" disabled={isSubmitting} className="w-full">
+      {isSubmitting ? "Submitting..." : buttonText}
     </Button>
   );
 }
@@ -66,17 +63,17 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
   const { toast } = useToast();
   const [formSubmittedSuccessfully, setFormSubmittedSuccessfully] = useState(false);
   const [finalRsvpStatus, setFinalRsvpStatus] = useState<RsvpStatus | null>(null);
+  const [isSubmitting, startTransition] = useTransition(); // For managing pending state of the manual action call
 
   const chosenFormAction = isPublicRsvp ? submitPublicRsvp : submitRsvp;
   const initialState: RsvpFormState = { message: "", success: false };
-  // Updated to use React.useActionState
-  const [state, formAction] = useActionState(chosenFormAction, initialState); 
+  const [state, formAction] = useActionState(chosenFormAction, initialState);
 
   const form = useForm<RsvpFormValues>({
     resolver: zodResolver(RsvpFormSchemaClient),
     defaultValues: {
-      name: invitation?.guestName || "", 
-      email: invitation?.guestEmail || "", 
+      name: invitation?.guestName || "",
+      email: invitation?.guestEmail || "",
       status: (invitation?.status === 'confirmed' || invitation?.status === 'declining') ? invitation.status : undefined,
     },
   });
@@ -85,7 +82,7 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
   const alreadyConfirmed = invitation?.status === 'confirmed';
 
   useEffect(() => {
-    if (state.message) {
+    if (state.message && !isSubmitting) { // Process state only after transition is done
       if (state.success) {
         toast({
           title: "Success!",
@@ -112,7 +109,7 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
         if (state.errors?.status) form.setError("status", { type: "server", message: state.errors.status.join(", ") });
       }
     }
-  }, [state, toast, form]);
+  }, [state, toast, form, isSubmitting]); // Added isSubmitting to dependencies
 
   if (formSubmittedSuccessfully || (!isPublicRsvp && (invitation?.status === 'confirmed' || invitation?.status === 'declining') && !form.formState.isDirty && !state.message && !state.errors)) {
     const currentDisplayStatus = finalRsvpStatus || invitation?.status;
@@ -126,11 +123,11 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
         </CardHeader>
         <CardContent>
             <AlertDescription>
-            {currentDisplayStatus === 'confirmed' 
+            {currentDisplayStatus === 'confirmed'
                 ? `Thank you, ${form.getValues().name || 'Guest'}! We've recorded your RSVP as confirmed. We look forward to seeing you at ${event.name}.`
                 : `Thank you, ${form.getValues().name || 'Guest'}. We've recorded your RSVP as declining for ${event.name}.`}
             {(currentDisplayStatus === 'waitlisted') && `You have been added to the waitlist for ${event.name}. We will notify you if a spot becomes available.`}
-            
+
             {!isPublicRsvp && <p className="mt-2 text-xs">You can update your RSVP on this page if your plans change, subject to availability.</p>}
             {isPublicRsvp && currentDisplayStatus === 'confirmed' && <p className="mt-2 text-xs">A confirmation email might be sent (feature pending). Please note down the event details.</p>}
             </AlertDescription>
@@ -139,12 +136,10 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
           <CardFooter>
               <Button onClick={() => {
               setFormSubmittedSuccessfully(false);
-              // Reset state more comprehensively
-              state.message = ""; 
+              state.message = "";
               state.success = false;
               state.errors = undefined;
               state.updatedInvitation = undefined;
-              // Reset form to original invitation values or empty if it was a public placeholder
               form.reset({
                   name: invitation?.guestName || "",
                   email: invitation?.guestEmail || "",
@@ -159,6 +154,29 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
     );
   }
 
+  const handleValidatedSubmit = (clientData: RsvpFormValues) => {
+    const formData = new FormData();
+    formData.append('name', clientData.name);
+    formData.append('email', clientData.email);
+
+    if (!isPublicRsvp) {
+      if (!clientData.status) {
+        // This should ideally be caught by client-side validation (e.g. making status required in Zod for private)
+        // For robustness, handle it here too or ensure Zod schema is stricter for private RSVPs.
+        form.setError("status", {type: "manual", message: "Please select your attendance status."});
+        return;
+      }
+      formData.append('status', clientData.status);
+      formData.append('token', invitation.uniqueToken);
+    } else {
+      formData.append('eventId', event.id);
+    }
+
+    startTransition(() => {
+      formAction(formData);
+    });
+  };
+
   return (
     <Card className="w-full max-w-md shadow-xl">
       <CardHeader>
@@ -167,11 +185,9 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
           {isPublicRsvp ? "Please provide your details to reserve a spot." : "Please confirm your attendance below."}
         </CardDescription>
       </CardHeader>
-      <form action={formAction} onSubmit={form.handleSubmit(()=>formAction(new FormData(form.control._formValuesIncludingDisabled)))}>
+      <form onSubmit={form.handleSubmit(handleValidatedSubmit)}>
         <CardContent className="space-y-6">
-          {!isPublicRsvp && <input type="hidden" name="token" value={invitation?.uniqueToken} />}
-          {isPublicRsvp && <input type="hidden" name="eventId" value={event.id} />} 
-          
+
           <div className="space-y-2">
             <Label htmlFor="name">Full Name</Label>
             <Input
@@ -179,7 +195,7 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
               {...form.register("name")}
               placeholder="Your full name"
               className={form.formState.errors.name ? "border-destructive" : ""}
-              readOnly={!isPublicRsvp && !!invitation?.guestName && invitation.status !== 'pending' && invitation.status !== 'waitlisted'} 
+              readOnly={!isPublicRsvp && !!invitation?.guestName && invitation.status !== 'pending' && invitation.status !== 'waitlisted'}
             />
             {form.formState.errors.name && (
               <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
@@ -201,20 +217,22 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
             )}
           </div>
 
-          {!isPublicRsvp && ( // Only show status radio group for private invitations
+          {!isPublicRsvp && (
             <div className="space-y-2">
               <Label>Will you attend?</Label>
               <RadioGroup
                 onValueChange={(value) => form.setValue("status", value as "confirmed" | "declining", { shouldValidate: true })}
                 defaultValue={(invitation?.status === 'confirmed' || invitation?.status === 'declining') ? invitation.status : undefined}
                 className="flex space-x-4"
-                {...form.register("status")}
+                // {...form.register("status")} // register is implicitly handled by setValue and Zod schema
               >
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem 
-                    value="confirmed" 
-                    id="confirmed" 
+                  <RadioGroupItem
+                    value="confirmed"
+                    id="confirmed"
                     disabled={isEventEffectivelyFull && !alreadyConfirmed}
+                    checked={form.watch("status") === "confirmed"} // Control checked state
+                    onClick={() => form.setValue("status", "confirmed", {shouldValidate: true})}
                   />
                   <Label htmlFor="confirmed" className={cn("cursor-pointer", isEventEffectivelyFull && !alreadyConfirmed ? "text-muted-foreground cursor-not-allowed" : "")}>
                     Yes, I&apos;ll attend
@@ -222,19 +240,26 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="declining" id="declining" />
+                  <RadioGroupItem value="declining" id="declining"
+                    checked={form.watch("status") === "declining"} // Control checked state
+                    onClick={() => form.setValue("status", "declining", {shouldValidate: true})}
+                  />
                   <Label htmlFor="declining" className="cursor-pointer">No, I can&apos;t make it</Label>
                 </div>
               </RadioGroup>
               {form.formState.errors.status && (
                 <p className="text-sm text-destructive">{form.formState.errors.status.message}</p>
               )}
+               {/* Ensure status is required for private RSVPs */}
+              { !form.getValues().status && form.formState.isSubmitted && !isPublicRsvp && (
+                <p className="text-sm text-destructive">Please select your attendance status.</p>
+              )}
             </div>
           )}
-          {state.errors?._form && ( 
+          {state.errors?._form && (
             <p className="text-sm text-destructive">{state.errors._form.join(", ")}</p>
           )}
-           {isEventEffectivelyFull && !alreadyConfirmed && !isPublicRsvp && ( // Only show this specific message for private invites when full
+           {isEventEffectivelyFull && !alreadyConfirmed && !isPublicRsvp && (
             <Alert variant="default" className="bg-secondary">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Event Capacity Reached</AlertTitle>
@@ -243,7 +268,7 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
               </AlertDescription>
             </Alert>
           )}
-           {isEventEffectivelyFull && isPublicRsvp && ( // Different message for public RSVPs when full
+           {isEventEffectivelyFull && isPublicRsvp && (
              <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Event Currently Full</AlertTitle>
@@ -254,7 +279,7 @@ export default function RsvpFormComponent({ invitation, event, isPublicRsvp = fa
            )}
         </CardContent>
         <CardFooter>
-          <SubmitButton currentStatus={invitation?.status} isPublicRsvp={isPublicRsvp} />
+          <SubmitButton currentStatus={invitation?.status} isPublicRsvp={isPublicRsvp} isSubmitting={isSubmitting} />
         </CardFooter>
       </form>
     </Card>
