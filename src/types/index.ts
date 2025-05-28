@@ -1,5 +1,4 @@
 
-
 // Base type for Firestore Timestamps, which will be converted to string for client
 type FirestoreTimestamp = {
   _seconds: number;
@@ -13,6 +12,7 @@ export type EventMood = 'formal' | 'casual' | 'celebratory' | 'professional' | '
 
 export interface EventData {
   id: string;
+  creatorId: string; // ID of the user who created the event
   name: string;
   date: TimestampString; // ISO string date, from Firestore Timestamp
   time: string;

@@ -1,36 +1,53 @@
 
 "use server";
 
-import { getEventById, getAllInvitationsForEvent, getEventStats, getMostRecentEventId } from "@/lib/db";
+import { getEventById, getAllInvitationsForEvent, getEventStats, getMostRecentEventIdForUser } from "@/lib/db";
 import { tabulateRsvpStats, type TabulateRsvpStatsInput, type TabulateRsvpStatsOutput } from "@/ai/flows/tabulate-rsvps";
 import type { InvitationData, RsvpStats, EventData } from "@/types";
 
-export async function fetchAdminDashboardData(): Promise<{
+export async function fetchAdminDashboardData(userId: string | null): Promise<{
   event: EventData | null;
   stats: RsvpStats | null;
   invitations: InvitationData[];
-  eventDetails: string; // For AI processing
-  guestListString: string; // For AI processing
+  eventDetails: string; 
+  guestListString: string;
 }> {
-  const recentEventId = await getMostRecentEventId();
+  if (!userId) {
+    return {
+      event: null,
+      stats: null,
+      invitations: [],
+      eventDetails: "User not authenticated.",
+      guestListString: ""
+    };
+  }
+
+  const recentEventId = await getMostRecentEventIdForUser(userId);
 
   if (!recentEventId) {
     return {
       event: null,
       stats: null,
       invitations: [],
-      eventDetails: "No events found.",
+      eventDetails: "No events found for this user.",
       guestListString: ""
     };
   }
 
   const event = await getEventById(recentEventId);
+  if (!event) { // Added check if event fetch fails for some reason
+    return {
+      event: null,
+      stats: null,
+      invitations: [],
+      eventDetails: `Event with ID ${recentEventId} not found.`,
+      guestListString: ""
+    };
+  }
   const stats = await getEventStats(recentEventId);
   const invitations = await getAllInvitationsForEvent(recentEventId);
 
-  const eventDetailsForAI = event
-    ? `Event: ${event.name}, Date: ${event.date}, Time: ${event.time}, Location: ${event.location}, Seat Limit: ${event.seatLimit}, Mood: ${event.mood}`
-    : "Event details not available.";
+  const eventDetailsForAI = `Event: ${event.name}, Date: ${event.date}, Time: ${event.time}, Location: ${event.location}, Seat Limit: ${event.seatLimit}, Mood: ${event.mood}`;
   
   const guestListForAI = invitations.length > 0
     ? invitations
@@ -82,6 +99,11 @@ export async function exportGuestsToCsv(eventId: string | undefined): Promise<st
 }
 
 export async function resendInvitations(guestUniqueTokens: string[]): Promise<{ success: boolean; message: string }> {
+  // Placeholder: Actual resend logic would involve re-queuing emails.
   console.log("Attempting to resend invitations to guests with tokens:", guestUniqueTokens);
-  return { success: true, message: `Queued ${guestUniqueTokens.length} invitations for re-sending.` };
+  // In a real implementation, you would:
+  // 1. Fetch invitation details for each token.
+  // 2. Call your email sending service for each.
+  // 3. Update email logs.
+  return { success: true, message: `Queued ${guestUniqueTokens.length} invitations for re-sending (simulated).` };
 }

@@ -10,11 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { fetchAdminDashboardData, triggerAiTabulation, exportGuestsToCsv, resendInvitations } from '../actions';
 import type { InvitationData, RsvpStats, RsvpStatus, EventData } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock, PlusCircle, CalendarClock } from 'lucide-react';
+import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock, PlusCircle, CalendarClock, EyeOff } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from "@/components/ui/progress";
 import type { TabulateRsvpStatsOutput } from '@/ai/flows/tabulate-rsvps';
 import { cn } from "@/lib/utils";
+import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
 
 import {
   ChartContainer,
@@ -54,6 +55,7 @@ const rsvpChartConfig = {
 } satisfies RechartsPrimitive.ChartConfig;
 
 export default function DashboardClient() {
+  const { user, loading: authLoading } = useAuth(); // Get user from AuthContext
   const [currentEvent, setCurrentEvent] = useState<EventData | null>(null);
   const [stats, setStats] = useState<RsvpStats | null>(null);
   const [invitations, setInvitations] = useState<InvitationData[]>([]);
@@ -66,8 +68,17 @@ export default function DashboardClient() {
 
   useEffect(() => {
     async function loadData() {
+      if (authLoading) return; // Don't fetch if auth state is still loading
+      if (!user) {
+        setIsLoading(false); // Not logged in, nothing to load for this user
+        setCurrentEvent(null);
+        setStats(null);
+        setInvitations([]);
+        return;
+      }
       setIsLoading(true);
-      const data = await fetchAdminDashboardData();
+      const data = await fetchAdminDashboardData(user.uid); // Pass user.uid
+      console.log('DashboardClient Invitations:', data.invitations);
       setCurrentEvent(data.event);
       setStats(data.stats);
       setInvitations(data.invitations);
@@ -76,7 +87,7 @@ export default function DashboardClient() {
       setIsLoading(false);
     }
     loadData();
-  }, []);
+  }, [user, authLoading]); // Re-run if user or authLoading changes
 
   const rsvpChartData = useMemo(() => {
     const data: { category: string; guests: number; fill: string }[] = [];
@@ -153,7 +164,7 @@ export default function DashboardClient() {
     }
   };
   
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <Activity className="h-12 w-12 animate-spin text-primary" />
@@ -190,7 +201,7 @@ export default function DashboardClient() {
           {currentEvent && (
             <p className="text-lg text-muted-foreground flex items-center">
               <CalendarClock className="mr-2 h-5 w-5" />
-              Showing stats for: <strong className="ml-1 text-foreground">{currentEvent.name}</strong> (Most Recent)
+              Showing stats for your event: <strong className="ml-1 text-foreground">{currentEvent.name}</strong> (Most Recent)
             </p>
           )}
         </div>
@@ -202,26 +213,37 @@ export default function DashboardClient() {
         </Button>
       </div>
       
-      {!currentEvent && !isLoading ? (
+      {!user ? (
+        <Card className="shadow-lg">
+          <CardHeader><CardTitle>Not Authenticated</CardTitle></CardHeader>
+          <CardContent><p className="text-muted-foreground">Please <Link href="/auth" className="underline text-primary">sign in</Link> to view your dashboard.</p></CardContent>
+        </Card>
+      ) : !currentEvent && !isLoading ? (
          <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>No Event Data</CardTitle>
+            <CardTitle className="flex items-center"><EyeOff className="mr-2 h-6 w-6 text-muted-foreground"/>No Event Data</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">No events found in the database. Create your first event to see statistics here!</p>
+            <p className="text-muted-foreground">You haven't created any events yet, or your most recent event could not be loaded.</p>
+            <Button asChild className="mt-4">
+                <Link href="/admin/create-event">
+                    <PlusCircle className="mr-2 h-5 w-5" />
+                    Create Your First Event
+                </Link>
+            </Button>
           </CardContent>
         </Card>
-      ) : (
+      ) : currentEvent && stats ? ( // Ensure currentEvent and stats are not null before rendering dependent UI
         <>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
             <StatCard title="Total Invited" value={invitations.length} icon={Users} description="Total number of guests invited." />
-            <StatCard title="Confirmed RSVPs" value={stats?.confirmed ?? 0} icon={CheckSquare} description={`${confirmedPercentage.toFixed(1)}% of capacity`} className="bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700" />
-            <StatCard title="Pending RSVPs" value={stats?.pending ?? 0} icon={MailWarning} description="Guests who haven't responded." className="bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-700"/>
-            <StatCard title="Declined RSVPs" value={stats?.declined ?? 0} icon={UserX} description="Guests who cannot attend." className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700"/>
-            <StatCard title="Waitlisted" value={stats?.waitlisted ?? 0} icon={Clock} description="Guests on the waitlist." className="bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700"/>
+            <StatCard title="Confirmed RSVPs" value={stats.confirmed} icon={CheckSquare} description={`${confirmedPercentage.toFixed(1)}% of capacity`} className="bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700" />
+            <StatCard title="Pending RSVPs" value={stats.pending} icon={MailWarning} description="Guests who haven't responded." className="bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-700"/>
+            <StatCard title="Declined RSVPs" value={stats.declined} icon={UserX} description="Guests who cannot attend." className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700"/>
+            <StatCard title="Waitlisted" value={stats.waitlisted} icon={Clock} description="Guests on the waitlist." className="bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700"/>
           </div>
 
-          {stats && stats.totalSeats > 0 && (
+          {stats.totalSeats > 0 && (
             <Card className="shadow-lg">
               <CardHeader>
                 <CardTitle>Event Capacity</CardTitle>
@@ -245,8 +267,8 @@ export default function DashboardClient() {
                   <ChartContainer config={rsvpChartConfig} className="h-full w-full">
                     <RechartsPrimitive.BarChart
                       data={rsvpChartData}
-                      layout="horizontal"
-                      margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
+                      layout="horizontal" // Changed from vertical for better label readability with many categories
+                      margin={{ top: 5, right: 20, left: 5, bottom: 20 }} // Adjusted margins
                     >
                       <RechartsPrimitive.CartesianGrid strokeDasharray="3 3" vertical={false}/>
                       <RechartsPrimitive.XAxis
@@ -255,8 +277,9 @@ export default function DashboardClient() {
                         axisLine={false}
                         tickMargin={8}
                         tickFormatter={(value) => rsvpChartConfig[value as keyof typeof rsvpChartConfig]?.label || value}
+                        interval={0} // Show all labels if space allows
                       />
-                      <RechartsPrimitive.YAxis dataKey="guests" tickLine={false} axisLine={false} tickMargin={8} />
+                      <RechartsPrimitive.YAxis dataKey="guests" tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false}/>
                       <ChartTooltip
                         cursor={{ fill: 'hsl(var(--muted))' }}
                         content={<ChartTooltipContent />}
@@ -357,16 +380,15 @@ export default function DashboardClient() {
             </CardContent>
           </Card>
         </>
-      )}
+      ) : null} {/* End of conditional rendering based on currentEvent and stats */}
       
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Developer Notes / TODOs</CardTitle></CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-1">
-            <p>• <strong>Firestore Setup:</strong> Ensure Firebase Admin SDK is configured with credentials in environment variables.</p>
-            <p>• <strong>Create Event Flow:</strong> UI structure for event creation wizard is added. Needs full implementation of state, DB interactions, and AI email generation/sending logic.</p>
-            <p>• <strong>Email Integration:</strong> Actual email sending needs SendGrid/Cloud Functions setup.</p>
-            <p>• <strong>Public Events:</strong> "Make Public" feature and homepage display not implemented.</p>
-            <p>• <strong>Authentication:</strong> Admin dashboard is public. Add auth.</p>
+            <p>• <strong>Firestore Setup:</strong> Ensure Firebase Admin SDK is configured. Composite indexes might be needed for queries (check server logs for links).</p>
+            <p>• <strong>Authentication:</strong> Admin dashboard now user-specific. Consider route protection for `/admin/*`.</p>
+            <p>• <strong>Public RSVP Form:</strong> Full submission logic for public RSVPs needs review/completion.</p>
+            <p>• <strong>Image Storage:</strong> Image upload is implemented; ensure Firebase Storage rules are set for public read if desired.</p>
         </CardContent>
       </Card>
     </div>

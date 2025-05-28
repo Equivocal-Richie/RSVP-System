@@ -10,6 +10,7 @@ import { uploadEventImage } from '@/lib/storage';
 
 
 const CreateEventServerSchema = z.object({
+  creatorId: z.string().min(1, "Creator ID is required."), // Added creatorId
   name: z.string().min(1, "Event name is required."),
   description: z.string().min(1, "Event description is required."),
   date: z.string().refine(val => !isNaN(Date.parse(val)), { message: "Invalid date format." }), 
@@ -18,7 +19,7 @@ const CreateEventServerSchema = z.object({
   mood: z.enum(['formal', 'casual', 'celebratory', 'professional', 'themed'], { message: "Invalid event mood." }),
   seatLimit: z.preprocess(val => parseInt(String(val), 10), z.number()), 
   organizerEmail: z.string().email("Invalid organizer email.").optional().or(z.literal("")),
-  isPublic: z.boolean().optional().default(false),
+  // isPublic is not directly part of this form, handled by makeEventPublicServerAction
 });
 
 const GuestsSchema = z.array(z.object({
@@ -32,6 +33,7 @@ export async function createEventAndProcessInvitations(
 ): Promise<{ success: boolean; message: string; eventId?: string; invitationIds?: string[]; emailResults?: any[] }> {
   
   const eventDetailsRaw = {
+    creatorId: formData.get("creatorId"), // Added creatorId
     name: formData.get("name"),
     description: formData.get("description"),
     date: formData.get("date"),
@@ -40,7 +42,6 @@ export async function createEventAndProcessInvitations(
     mood: formData.get("mood"),
     seatLimit: formData.get("seatLimit"),
     organizerEmail: formData.get("organizerEmail") || "", 
-    isPublic: formData.get("isPublic") === 'true', // This won't be set from the current form, defaults to false via schema
   };
 
   const validatedEventDetails = CreateEventServerSchema.safeParse(eventDetailsRaw);
@@ -72,20 +73,8 @@ export async function createEventAndProcessInvitations(
   const emailResults = [];
 
   try {
-    // Use a temporary ID for the image path if event ID isn't available yet,
-    // or structure storage paths not to strictly depend on final event ID if it causes issues.
-    // For simplicity, let's assume event ID will be generated first.
-    // const tempEventIdForImage = `temp-${Date.now()}`; 
-
     if (eventImageFile && eventImageFile.size > 0) {
-      // We need an eventId to properly name the image.
-      // This creates a slight challenge: event isn't created yet.
-      // Solution: upload image with a generic name or pass eventId after creation.
-      // For now, we pass a temporary identifier or a placeholder.
-      // A better approach might be to create event, then upload image with actual event ID, then update event.
-      // Or, use a generated UUID for the image name not tied to event ID.
-      // Let's assume uploadEventImage can handle a placeholder or generate its own unique name.
-      const uploadedImageUrl = await uploadEventImage(eventImageFile, "temp-event-image"); // Pass placeholder
+      const uploadedImageUrl = await uploadEventImage(eventImageFile, `event-${Date.now()}`); 
       if (uploadedImageUrl) {
         eventImagePath = uploadedImageUrl;
       } else {
@@ -94,17 +83,18 @@ export async function createEventAndProcessInvitations(
     }
 
     const eventToCreate: Omit<EventData, 'id' | 'confirmedGuestsCount' | 'createdAt' | 'updatedAt'> = {
+      creatorId: eventDataFromForm.creatorId, // Added creatorId
       name: eventDataFromForm.name,
       description: eventDataFromForm.description,
-      date: eventDataFromForm.date, // This is an ISO string from form, db layer expects it
+      date: eventDataFromForm.date, 
       time: eventDataFromForm.time,
       location: eventDataFromForm.location,
       mood: eventDataFromForm.mood as EventMood,
       seatLimit: eventDataFromForm.seatLimit,
-      eventImagePath: eventImagePath, // Will be null if upload failed or no image
-      organizerEmail: eventDataFromForm.organizerEmail || undefined, // Pass undefined if empty string
-      isPublic: eventDataFromForm.isPublic, // This will be false from Zod default
-      publicRsvpLink: undefined, // Will be null in db by default
+      eventImagePath: eventImagePath, 
+      organizerEmail: eventDataFromForm.organizerEmail || undefined,
+      isPublic: false, // New events are not public by default
+      publicRsvpLink: undefined, // New events don't have public link
     };
     
     const newEvent = await createEvent(eventToCreate);
@@ -113,23 +103,18 @@ export async function createEventAndProcessInvitations(
       return { success: false, message: "Failed to create event in database." };
     }
 
-    // If image was uploaded with a temp name, and you want to rename it with actual event ID, do it here.
-    // This is more complex and might involve deleting the temp and re-uploading, or a rename operation if supported.
-    // For now, we assume the URL from uploadEventImage is final.
-
     const createdInvitations = await createInvitations(newEvent.id, guestList);
     if (!createdInvitations || createdInvitations.length === 0) {
+      // Potentially rollback event creation or mark as incomplete
       return { success: false, message: "Event created, but failed to create invitations." };
     }
     
-    // Fetch the full event details again to ensure we have all fields (like createdAt)
-    const currentEventDetails = await getEventById(newEvent.id);
+    const currentEventDetails = await getEventById(newEvent.id); // Re-fetch to ensure consistency
     if (!currentEventDetails) {
-        // This would be unusual if newEvent.id was valid
         return { success: false, message: "Failed to fetch created event details for sending emails." };
     }
 
-    console.log(`Event ${newEvent.id} created. ${createdInvitations.length} invitations created. Processing emails...`);
+    console.log(`Event ${newEvent.id} created by ${currentEventDetails.creatorId}. ${createdInvitations.length} invitations created. Processing emails...`);
 
     for (const invitation of createdInvitations) {
       let emailStatus: EmailStatus = 'queued';
@@ -201,7 +186,7 @@ export interface GenerateInvitationTextClientInput {
   eventDescription: string;
   eventMood: EventMood;
   guestName: string;
-  adjustmentInstructions?: string; // Added for "Adjust with AI"
+  adjustmentInstructions?: string;
 }
 export interface GenerateInvitationTextClientOutput {
   success: boolean;
@@ -219,7 +204,7 @@ export async function generatePersonalizedInvitationText(input: GenerateInvitati
       eventDescription: input.eventDescription,
       eventMood: input.eventMood, 
       guestName: input.guestName,
-      adjustmentInstructions: input.adjustmentInstructions, // Pass through
+      adjustmentInstructions: input.adjustmentInstructions,
     };
 
     const result: AIGenerateOutput = await generatePersonalizedInvitation(aiInput); 
@@ -247,6 +232,7 @@ export async function makeEventPublicServerAction(eventId: string): Promise<{ su
     return { success: false, message: "Event ID is required." };
   }
   try {
+    // For public links, we'll use the eventId itself as the token for simplicity
     const publicRsvpToken = eventId; 
     const success = await updateEventPublicStatus(eventId, publicRsvpToken);
     if (success) {
