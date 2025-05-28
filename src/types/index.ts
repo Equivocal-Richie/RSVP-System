@@ -65,7 +65,7 @@ export type EmailStatus = 'queued' | 'sent' | 'failed' | 'delivered' | 'opened' 
 
 export interface EmailLogData {
   id: string; // Firestore document ID
-  invitationId: string; 
+  invitationId: string;
   eventId: string;
   emailAddress: string;
   sentAt: TimestampString | null; // from Firestore Timestamp, null if queued/failed before sending
@@ -80,8 +80,16 @@ export interface RsvpStats {
   confirmed: number;
   pending: number;
   declined: number;
-  waitlisted: number; 
+  waitlisted: number;
   totalSeats: number; // 0 or -1 means unlimited
   availableSeats: number; // Meaningful only if totalSeats > 0
 }
 
+export interface UserData {
+  id: string; // Firebase Auth UID
+  email: string | null;
+  displayName?: string | null;
+  photoURL?: string | null;
+  // Add other profile fields as needed
+  createdAt?: TimestampString;
+}

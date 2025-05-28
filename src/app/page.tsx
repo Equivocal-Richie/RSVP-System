@@ -1,7 +1,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Ticket, CalendarDays, MapPin, Info, Building, Eye } from "lucide-react";
+import { Ticket, CalendarDays, MapPin, Info, Building, Eye, LogIn } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { getPublicEvents } from "@/lib/db";
@@ -14,15 +14,15 @@ async function HomePageContent() {
   return (
     <div className="space-y-12">
       <div className="flex flex-col items-center justify-center text-center space-y-8">
-        <Image 
-          src="https://placehold.co/800x400.png" 
-          alt="Event Banner" 
-          width={800} 
-          height={400} 
+        <Image
+          src="https://placehold.co/800x400.png"
+          alt="Event Banner"
+          width={800}
+          height={400}
           className="rounded-lg shadow-xl object-cover"
-          data-ai-hint="event celebration" 
+          data-ai-hint="event celebration"
         />
-        
+
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-primary">
           Welcome to RSVP Now
         </h1>
@@ -54,14 +54,17 @@ async function HomePageContent() {
                 For Event Organizers
               </CardTitle>
               <CardDescription>
-                Manage your event, view guest responses, and send reminders through the admin dashboard.
+                Ready to plan your next event? Sign in or create an account to access the dashboard and management tools.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Button asChild className="w-full">
-                <Link href="/admin">Go to Admin Dashboard</Link>
+                <Link href="/auth">
+                  <LogIn className="mr-2 h-5 w-5" />
+                  Create Event / Sign In
+                </Link>
               </Button>
-              <p className="mt-2 text-sm text-muted-foreground">Access statistics and guest management tools.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Access statistics and guest management tools after signing in.</p>
             </CardContent>
           </Card>
         </div>
@@ -98,7 +101,7 @@ async function HomePageContent() {
                 </CardContent>
                 <CardFooter className="flex flex-col sm:flex-row gap-2 pt-4 border-t">
                   <Button asChild className="w-full sm:w-auto flex-1">
-                    <Link href={`/rsvp/public/${event.id}`}> 
+                    <Link href={`/rsvp/public/${event.id}`}>
                       <Ticket className="mr-2 h-4 w-4" /> Reserve Seat
                     </Link>
                   </Button>
@@ -133,5 +136,3 @@ export default function HomePage() {
   // For now, let's assume it's fine as is and HomePageContent does the server work.
   return <HomePageContent />;
 }
-
-    
