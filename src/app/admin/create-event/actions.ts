@@ -18,7 +18,7 @@ const CreateEventServerSchema = z.object({
   mood: z.enum(['formal', 'casual', 'celebratory', 'professional', 'themed'], { message: "Invalid event mood." }),
   seatLimit: z.preprocess(val => parseInt(String(val), 10), z.number()), 
   organizerEmail: z.string().email("Invalid organizer email.").optional().or(z.literal("")),
-  isPublic: z.boolean().optional().default(false), // Added for completeness, though default in DB is false
+  isPublic: z.boolean().optional().default(false),
 });
 
 const GuestsSchema = z.array(z.object({
@@ -40,7 +40,7 @@ export async function createEventAndProcessInvitations(
     mood: formData.get("mood"),
     seatLimit: formData.get("seatLimit"),
     organizerEmail: formData.get("organizerEmail") || "", 
-    isPublic: formData.get("isPublic") === 'true', // Assuming isPublic might come from form
+    isPublic: formData.get("isPublic") === 'true', // This won't be set from the current form, defaults to false via schema
   };
 
   const validatedEventDetails = CreateEventServerSchema.safeParse(eventDetailsRaw);
@@ -72,10 +72,20 @@ export async function createEventAndProcessInvitations(
   const emailResults = [];
 
   try {
-    const tempEventIdForImage = `temp-${Date.now()}`; 
+    // Use a temporary ID for the image path if event ID isn't available yet,
+    // or structure storage paths not to strictly depend on final event ID if it causes issues.
+    // For simplicity, let's assume event ID will be generated first.
+    // const tempEventIdForImage = `temp-${Date.now()}`; 
 
     if (eventImageFile && eventImageFile.size > 0) {
-      const uploadedImageUrl = await uploadEventImage(eventImageFile, tempEventIdForImage);
+      // We need an eventId to properly name the image.
+      // This creates a slight challenge: event isn't created yet.
+      // Solution: upload image with a generic name or pass eventId after creation.
+      // For now, we pass a temporary identifier or a placeholder.
+      // A better approach might be to create event, then upload image with actual event ID, then update event.
+      // Or, use a generated UUID for the image name not tied to event ID.
+      // Let's assume uploadEventImage can handle a placeholder or generate its own unique name.
+      const uploadedImageUrl = await uploadEventImage(eventImageFile, "temp-event-image"); // Pass placeholder
       if (uploadedImageUrl) {
         eventImagePath = uploadedImageUrl;
       } else {
@@ -84,25 +94,38 @@ export async function createEventAndProcessInvitations(
     }
 
     const eventToCreate: Omit<EventData, 'id' | 'confirmedGuestsCount' | 'createdAt' | 'updatedAt'> = {
-      ...eventDataFromForm,
-      date: eventDataFromForm.date, 
+      name: eventDataFromForm.name,
+      description: eventDataFromForm.description,
+      date: eventDataFromForm.date, // This is an ISO string from form, db layer expects it
+      time: eventDataFromForm.time,
+      location: eventDataFromForm.location,
       mood: eventDataFromForm.mood as EventMood,
-      eventImagePath: eventImagePath, 
-      isPublic: eventDataFromForm.isPublic ?? false, 
+      seatLimit: eventDataFromForm.seatLimit,
+      eventImagePath: eventImagePath, // Will be null if upload failed or no image
+      organizerEmail: eventDataFromForm.organizerEmail || undefined, // Pass undefined if empty string
+      isPublic: eventDataFromForm.isPublic, // This will be false from Zod default
+      publicRsvpLink: undefined, // Will be null in db by default
     };
-
+    
     const newEvent = await createEvent(eventToCreate);
     if (!newEvent || !newEvent.id) {
+      console.error("Database call to createEvent returned null or no ID.");
       return { success: false, message: "Failed to create event in database." };
     }
+
+    // If image was uploaded with a temp name, and you want to rename it with actual event ID, do it here.
+    // This is more complex and might involve deleting the temp and re-uploading, or a rename operation if supported.
+    // For now, we assume the URL from uploadEventImage is final.
 
     const createdInvitations = await createInvitations(newEvent.id, guestList);
     if (!createdInvitations || createdInvitations.length === 0) {
       return { success: false, message: "Event created, but failed to create invitations." };
     }
     
+    // Fetch the full event details again to ensure we have all fields (like createdAt)
     const currentEventDetails = await getEventById(newEvent.id);
     if (!currentEventDetails) {
+        // This would be unusual if newEvent.id was valid
         return { success: false, message: "Failed to fetch created event details for sending emails." };
     }
 
@@ -178,6 +201,7 @@ export interface GenerateInvitationTextClientInput {
   eventDescription: string;
   eventMood: EventMood;
   guestName: string;
+  adjustmentInstructions?: string; // Added for "Adjust with AI"
 }
 export interface GenerateInvitationTextClientOutput {
   success: boolean;
@@ -195,6 +219,7 @@ export async function generatePersonalizedInvitationText(input: GenerateInvitati
       eventDescription: input.eventDescription,
       eventMood: input.eventMood, 
       guestName: input.guestName,
+      adjustmentInstructions: input.adjustmentInstructions, // Pass through
     };
 
     const result: AIGenerateOutput = await generatePersonalizedInvitation(aiInput); 
@@ -222,12 +247,9 @@ export async function makeEventPublicServerAction(eventId: string): Promise<{ su
     return { success: false, message: "Event ID is required." };
   }
   try {
-    // For simplicity, the public RSVP token will be the eventId itself.
-    // The public link will be constructed on the client or in the component that needs it, e.g., /rsvp/public/${eventId}
     const publicRsvpToken = eventId; 
     const success = await updateEventPublicStatus(eventId, publicRsvpToken);
     if (success) {
-      // Construct the full public link to return if needed, though client can also do this
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002';
       const publicLink = `${appUrl}/rsvp/public/${publicRsvpToken}`;
       return { success: true, message: "Event successfully made public.", publicLink };
@@ -239,5 +261,3 @@ export async function makeEventPublicServerAction(eventId: string): Promise<{ su
     return { success: false, message: "An unexpected error occurred while making the event public." };
   }
 }
-
-    

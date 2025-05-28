@@ -9,6 +9,10 @@ import { Mail, Info, Sparkles, RefreshCw } from 'lucide-react';
 import type { CreateEventFormData } from './CreateEventWizard';
 import { generatePersonalizedInvitationText, type GenerateInvitationTextClientInput, type GenerateInvitationTextClientOutput } from '../actions';
 import type { GuestInput, EventMood } from '@/types';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
 
 interface PreviewSendStepProps {
   eventData: Partial<CreateEventFormData>; 
@@ -19,10 +23,13 @@ export function PreviewSendStep({ eventData, guestList }: PreviewSendStepProps) 
   const [sampleEmail, setSampleEmail] = useState<GenerateInvitationTextClientOutput | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isAdjustDialogOpen, setIsAdjustDialogOpen] = useState(false);
+  const [adjustmentInstructions, setAdjustmentInstructions] = useState("");
+  const { toast } = useToast();
 
   const firstGuest = guestList?.[0];
 
-  const fetchSampleEmail = async () => {
+  const fetchSampleEmail = async (instructions?: string) => {
     if (!firstGuest || !eventData.name || !eventData.description || !eventData.mood) {
       setPreviewError("Not enough event or guest data to generate a preview.");
       setSampleEmail(null);
@@ -36,28 +43,39 @@ export function PreviewSendStep({ eventData, guestList }: PreviewSendStepProps) 
         eventDescription: eventData.description,
         eventMood: eventData.mood as EventMood, 
         guestName: firstGuest.name,
+        adjustmentInstructions: instructions,
       };
       const result = await generatePersonalizedInvitationText(inputForAI);
 
       if (result.success) {
         setSampleEmail(result);
+        if (instructions) {
+          toast({ title: "Preview Updated", description: "Email preview regenerated with your adjustments." });
+        }
       } else {
         setPreviewError(result.message || "Failed to generate email preview.");
         setSampleEmail(null);
+        toast({ title: "Preview Error", description: result.message || "Failed to generate email preview.", variant: "destructive" });
       }
     } catch (error) {
       console.error("Error generating email preview:", error);
       setPreviewError("An unexpected error occurred while generating the preview.");
       setSampleEmail(null);
+      toast({ title: "Preview Error", description: "An unexpected error occurred.", variant: "destructive" });
     } finally {
       setIsLoadingPreview(false);
+      setIsAdjustDialogOpen(false); // Close dialog after attempting fetch
     }
   };
 
   useEffect(() => {
-    fetchSampleEmail();
+    fetchSampleEmail(); // Fetch initial preview
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventData.name, eventData.description, eventData.mood, firstGuest?.name]); 
+  }, [eventData.name, eventData.description, eventData.mood, firstGuest?.name]); // Only re-run initial fetch if core data changes
+
+  const handleAdjustSubmit = () => {
+    fetchSampleEmail(adjustmentInstructions);
+  };
 
   const eventDate = eventData.date ? new Date(eventData.date).toLocaleDateString() : 'N/A';
   const eventTime = eventData.time || 'N/A';
@@ -111,14 +129,44 @@ export function PreviewSendStep({ eventData, guestList }: PreviewSendStepProps) 
              )}
           </div>
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={fetchSampleEmail} disabled={isLoadingPreview || !firstGuest}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${isLoadingPreview ? 'animate-spin' : ''}`} />
+            <Button type="button" variant="outline" onClick={() => fetchSampleEmail()} disabled={isLoadingPreview || !firstGuest}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${isLoadingPreview && !adjustmentInstructions ? 'animate-spin' : ''}`} />
               Regenerate Preview
             </Button>
-            {/* Placeholder for more advanced AI adjustment */}
-            <Button type="button" variant="outline" disabled>
-              <Sparkles className="mr-2 h-4 w-4" /> Adjust with AI (Coming Soon)
-            </Button>
+            
+            <Dialog open={isAdjustDialogOpen} onOpenChange={setIsAdjustDialogOpen}>
+              <DialogTrigger asChild>
+                <Button type="button" variant="outline" disabled={isLoadingPreview || !firstGuest}>
+                  <Sparkles className="mr-2 h-4 w-4" /> Adjust with AI
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Adjust Email Content</DialogTitle>
+                  <DialogDescription>
+                    Provide instructions for the AI to refine the invitation text. 
+                    For example, "Make it more formal," or "Emphasize the networking opportunities."
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-2">
+                  <Label htmlFor="adjustment-instructions">Your Instructions:</Label>
+                  <Textarea 
+                    id="adjustment-instructions"
+                    value={adjustmentInstructions}
+                    onChange={(e) => setAdjustmentInstructions(e.target.value)}
+                    placeholder="e.g., Make the tone more celebratory and mention the keynote speaker, Dr. Jane Doe."
+                    rows={4}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="ghost" onClick={() => setIsAdjustDialogOpen(false)} disabled={isLoadingPreview}>Cancel</Button>
+                  <Button onClick={handleAdjustSubmit} disabled={isLoadingPreview || !adjustmentInstructions.trim()}>
+                     {isLoadingPreview && adjustmentInstructions ? (<RefreshCw className="mr-2 h-4 w-4 animate-spin" />) : null}
+                    Apply Adjustments & Regenerate
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </CardContent>
       </Card>

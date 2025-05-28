@@ -17,6 +17,7 @@ const GenerateInvitationTextInputSchema = z.object({
   eventDescription: z.string().describe('A brief description of the event.'),
   eventMood: z.enum(['formal', 'casual', 'celebratory', 'professional', 'themed']).describe('The overall mood or theme of the event.'),
   guestName: z.string().describe("The guest's full name."),
+  adjustmentInstructions: z.string().optional().describe("Optional instructions to adjust or refine the previously generated email text.")
 });
 export type GenerateInvitationTextInput = z.infer<typeof GenerateInvitationTextInputSchema>;
 
@@ -42,18 +43,25 @@ const generateEmailPrompt = ai.definePrompt({
 
   Guest Name: {{{guestName}}}
 
+  {{#if adjustmentInstructions}}
+  You have previously generated an invitation. Please revise it based on the following instructions:
+  "{{{adjustmentInstructions}}}"
+  
+  Focus on incorporating these adjustments while maintaining the core event details and the specified mood.
+  {{else}}
   Instructions:
   1.  Create a personalized greeting for {{{guestName}}}.
   2.  Write an engaging email body that incorporates the event name and reflects the specified event mood. Briefly mention the event.
   3.  Write a suitable closing.
   4.  Combine these into a 'fullEmailText' field.
+  {{/if}}
 
-  Example for a 'casual' mood for 'Tech Meetup' for guest 'Alex Doe':
+  Example for a 'casual' mood for 'Tech Meetup' for guest 'Alex Doe' (without adjustment instructions):
   {
     "greeting": "Hey Alex Doe!",
     "body": "Hope you're doing well! Just wanted to personally invite you to our upcoming Tech Meetup. It's going to be a relaxed get-together with some cool talks and networking. We'd love to see you there and chat about all things tech.",
     "closing": "Cheers,\nThe Event Team",
-    "fullEmailText": "Hey Alex Doe!\n\nHope you're doing well! Just wanted to personally invite you to our upcoming Tech Meetup. It's going to be a relaxed get-together with some cool talks and networking. We'd love to see you there and chat about all things tech.\n\nCheers,\nThe Event Team"
+    "fullEmailText": "Hey Alex Doe!\\n\\nHope you're doing well! Just wanted to personally invite you to our upcoming Tech Meetup. It's going to be a relaxed get-together with some cool talks and networking. We'd love to see you there and chat about all things tech.\\n\\nCheers,\\nThe Event Team"
   }
   
   Ensure the output is in the specified JSON format.
@@ -61,9 +69,9 @@ const generateEmailPrompt = ai.definePrompt({
 });
 
 
-const generateInvitationTextFlow = ai.defineFlow(
+const generateInvitationTextFlowInternal = ai.defineFlow( // Renamed to avoid conflict
   {
-    name: 'generateInvitationTextFlow',
+    name: 'generateInvitationTextFlowInternal', // Renamed
     inputSchema: GenerateInvitationTextInputSchema,
     outputSchema: GenerateInvitationTextOutputSchema,
   },
@@ -78,6 +86,5 @@ const generateInvitationTextFlow = ai.defineFlow(
 
 // Export a wrapper function for easier invocation from server actions
 export async function generatePersonalizedInvitation(input: GenerateInvitationTextInput): Promise<GenerateInvitationTextOutput> {
-    return generateInvitationTextFlow(input);
+    return generateInvitationTextFlowInternal(input); // Call the renamed internal flow
 }
-

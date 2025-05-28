@@ -29,27 +29,41 @@ export async function getMostRecentEventId(): Promise<string | null> {
   }
 }
 
-export async function createEvent(eventData: Omit<EventData, 'id' | 'confirmedGuestsCount' | 'createdAt' | 'updatedAt'>): Promise<EventData | null> {
+export async function createEvent(eventDataInput: Omit<EventData, 'id' | 'confirmedGuestsCount' | 'createdAt' | 'updatedAt'>): Promise<EventData | null> {
   try {
-    const newEventRef = db.collection(EVENTS_COLLECTION).doc(); 
+    const newEventRef = db.collection(EVENTS_COLLECTION).doc();
     
-    const firestoreWriteData = {
-      ...eventData, 
-      date: Timestamp.fromDate(new Date(eventData.date)), 
-      id: newEventRef.id, 
-      _confirmedGuestsCount: 0, 
-      isPublic: false, // Default to not public
-      publicRsvpLink: null, // Default to null
+    const finalFirestoreWriteData = {
+      name: eventDataInput.name,
+      description: eventDataInput.description,
+      date: Timestamp.fromDate(new Date(eventDataInput.date)), // eventDataInput.date is an ISO string
+      time: eventDataInput.time,
+      location: eventDataInput.location,
+      mood: eventDataInput.mood,
+      seatLimit: eventDataInput.seatLimit,
+      eventImagePath: eventDataInput.eventImagePath || null, // Ensure null if not present
+      organizerEmail: eventDataInput.organizerEmail || null, // Ensure null if not present
+      id: newEventRef.id,
+      _confirmedGuestsCount: 0,
+      isPublic: false, // Always false on initial creation
+      publicRsvpLink: null, // Always null on initial creation
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
-    await newEventRef.set(firestoreWriteData);
+
+    await newEventRef.set(finalFirestoreWriteData);
     
     const docSnap = await newEventRef.get();
-    if (!docSnap.exists) return null; 
+    if (!docSnap.exists) {
+        console.error("Failed to find event document immediately after creation:", newEventRef.id);
+        return null;
+    }
 
     const fetchedData = docSnap.data();
-    if (!fetchedData) return null;
+    if (!fetchedData) {
+        console.error("Event document data is empty after creation:", newEventRef.id);
+        return null;
+    }
 
     // Ensure all fields that might be undefined on write but have defaults are handled
     const clientEventData: EventData = {
@@ -73,7 +87,7 @@ export async function createEvent(eventData: Omit<EventData, 'id' | 'confirmedGu
     return convertTimestampsInObj(clientEventData);
 
   } catch (error) {
-    console.error("Error creating event:", error);
+    console.error("Error creating event in db.ts:", error);
     return null;
   }
 }
@@ -142,7 +156,7 @@ export async function updateEventPublicStatus(eventId: string, publicRsvpToken: 
     const eventRef = db.collection(EVENTS_COLLECTION).doc(eventId);
     await eventRef.update({
       isPublic: true,
-      publicRsvpLink: publicRsvpToken, // Store the token, e.g., eventId or a UUID
+      publicRsvpLink: publicRsvpToken, 
       updatedAt: FieldValue.serverTimestamp(),
     });
     return true;
@@ -213,7 +227,11 @@ export async function createInvitations(eventId: string, guests: GuestInput[]): 
          if (docSnap.exists) {
             fetchedInvitations.push(convertTimestampsInObj({ id: docSnap.id, ...docSnap.data() } as InvitationData));
          } else {
-            fetchedInvitations.push(convertTimestampsInObj(guestData));
+            // This case should ideally not happen if batch commit was successful
+            // and implies a potential race condition or delay in Firestore visibility,
+            // or an error in fetching post-creation. Fallback to client-side constructed data.
+            console.warn(`Invitation ${guestData.id} not immediately found after batch commit. Using optimistic data.`);
+            fetchedInvitations.push(convertTimestampsInObj(guestData)); 
          }
     }
     return fetchedInvitations; 
@@ -282,6 +300,8 @@ export async function updateInvitationRsvp(
 
       if (status === 'confirmed' && oldStatus !== 'confirmed') {
         if (eventDataFromDb.seatLimit > 0 && currentConfirmedGuestCount >= eventDataFromDb.seatLimit) {
+          // TODO: Implement waitlisting logic here
+          // For now, just throw an error or set status to 'waitlisted'
           throw new Error('Sorry, the event is currently full.');
         }
       }
@@ -356,40 +376,53 @@ export async function createPublicRsvpInvitation(
   eventId: string,
   guestName: string,
   guestEmail: string
-): Promise<InvitationData | null> {
-  const uniqueToken = randomUUID();
-  const newInvitationRef = db.collection(INVITATIONS_COLLECTION).doc();
-
-  const newInvitationData = {
-    id: newInvitationRef.id,
-    uniqueToken,
-    eventId,
-    guestName,
-    guestEmail,
-    status: 'confirmed' as RsvpStatus, // Or 'pending_public_confirmation'
-    visited: true, // Public link assumes immediate visit
-    originalGuestName: guestName,
-    originalGuestEmail: guestEmail,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-    rsvpAt: FieldValue.serverTimestamp(),
-  };
+): Promise<{ success: boolean; message: string; invitation?: InvitationData | null }> {
+  
+  const eventRef = db.collection(EVENTS_COLLECTION).doc(eventId);
 
   try {
-    await newInvitationRef.set(newInvitationData);
-    
-    // Important: Increment event's _confirmedGuestsCount
-    const eventRef = db.collection(EVENTS_COLLECTION).doc(eventId);
-    await eventRef.update({
-      _confirmedGuestsCount: FieldValue.increment(1),
-      updatedAt: FieldValue.serverTimestamp(),
+    const result = await db.runTransaction(async (transaction) => {
+      const eventSnap = await transaction.get(eventRef);
+      if (!eventSnap.exists) {
+        throw new Error('Event not found.');
+      }
+      const eventData = eventSnap.data() as EventData;
+
+      if (eventData.seatLimit > 0 && (eventData.confirmedGuestsCount ?? 0) >= eventData.seatLimit) {
+        // TODO: Implement waitlisting for public RSVP
+        throw new Error('Sorry, the event is currently full.');
+      }
+
+      const uniqueToken = randomUUID();
+      const newInvitationRef = db.collection(INVITATIONS_COLLECTION).doc();
+      const newInvitationData: Omit<InvitationData, 'id'> & { id: string; createdAt: any; updatedAt: any; rsvpAt: any; } = {
+        id: newInvitationRef.id,
+        uniqueToken,
+        eventId,
+        guestName,
+        guestEmail,
+        status: 'confirmed', // Public RSVPs are directly confirmed for now
+        visited: true,
+        originalGuestName: guestName,
+        originalGuestEmail: guestEmail,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        rsvpAt: FieldValue.serverTimestamp(),
+      };
+      transaction.set(newInvitationRef, newInvitationData);
+
+      // Increment event's _confirmedGuestsCount
+      transaction.update(eventRef, {
+        _confirmedGuestsCount: FieldValue.increment(1),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      
+      return convertTimestampsInObj(newInvitationData as InvitationData);
     });
-    
-    const docSnap = await newInvitationRef.get();
-    return convertTimestampsInObj(docSnap.data() as InvitationData);
-  } catch (error) {
+    return { success: true, message: "RSVP successful! You're confirmed.", invitation: result };
+  } catch (error: any) {
     console.error('Error creating public RSVP invitation:', error);
-    return null;
+    return { success: false, message: error.message || "Failed to process public RSVP." };
   }
 }
 
@@ -409,12 +442,11 @@ export async function getAllInvitationsForEvent(eventId: string): Promise<Invita
       
     return snapshot.docs.map(doc => convertTimestampsInObj({ id: doc.id, ...doc.data() } as InvitationData));
   } catch (error: any) {
-    console.error(`Error fetching all invitations for event ${eventId}:`, error);
+    console.error(`Error fetching all invitations for event ${eventId}:`, error.message);
      if (error.code === 9 && error.message.includes("requires an index")) { // FAILED_PRECONDITION
-      console.error("Firestore composite index missing for `getAllInvitationsForEvent`. Please create it in the Firebase console.");
-      // The error message from Firestore usually includes a direct link to create the index.
+      console.error("Firestore composite index missing for `getAllInvitationsForEvent`. Please create it in the Firebase console. Link: " + error.details);
     }
-    return []; // Return empty on error to prevent crashes, admin dashboard will show "no invitations"
+    return []; 
   }
 }
 
@@ -444,7 +476,7 @@ export async function getEventStats(eventId: string): Promise<RsvpStats | null> 
       pending: counts.pending ?? 0,
       declined: counts.declined ?? 0,
       waitlisted: counts.waitlisted ?? 0,
-      totalSeats: event.seatLimit, 
+      totalSeats: event.seatLimit <= 0 ? 0 : event.seatLimit, // Display 0 for unlimited for simplicity in UI
       availableSeats: availableSeats,
     };
   } catch (error) {
@@ -526,5 +558,3 @@ export async function createEmailLog(
     return null;
   }
 }
-
-    
