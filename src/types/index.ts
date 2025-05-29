@@ -21,7 +21,7 @@ export interface EventData {
   mood: EventMood;
   eventImagePath?: string; // Optional: path/URL to event image
   seatLimit: number; // Set to 0 or -1 if no limit
-  confirmedGuestsCount: number; // This will be derived or read from a denormalized field
+  confirmedGuestsCount: number; // This will be derived or read from a denormalized field (_confirmedGuestsCount in Firestore)
   organizerEmail?: string; // For "Inquire" functionality
   isPublic?: boolean; // Defaults to false
   publicRsvpLink?: string; // Unique link for public RSVPs if isPublic is true
@@ -62,6 +62,8 @@ export interface ReservationData {
 }
 
 export type EmailStatus = 'queued' | 'sent' | 'failed' | 'delivered' | 'opened' | 'clicked' | 'bounced';
+export type EmailType = 'initialInvitation' | 'publicRsvpConfirmed' | 'publicRsvpWaitlisted' | 'waitlistAccepted' | 'waitlistDeclined' | 'eventFeedback';
+
 
 export interface EmailLogData {
   id: string; // Firestore document ID
@@ -92,4 +94,15 @@ export interface UserData {
   photoURL?: string | null;
   // Add other profile fields as needed
   createdAt?: TimestampString;
+  updatedAt?: TimestampString; // Added for consistency
+}
+
+export interface EventAnalyticRow {
+  eventId: string;
+  eventName: string;
+  eventDate: TimestampString;
+  confirmedGuests: number;
+  seatLimit: number;
+  capacityFilledPercentage: number | null; // null if seatLimit is 0 or less
+  changeFromPreviousPercentage: number | null; // null if no previous event or previous event had no seat limit
 }

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Logo from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
-import { Home, ShieldCheck, LogIn, LogOut, UserCircle, Loader2 } from 'lucide-react';
+import { Home, LogIn, LogOut, UserCircle, Loader2, ShieldCheck } from 'lucide-react'; // Added ShieldCheck back
 import { useAuth } from '@/contexts/AuthContext';
 import { auth } from '@/lib/firebaseClient'; // Firebase client auth instance
 import { signOut } from 'firebase/auth';
@@ -52,10 +52,12 @@ const Header = () => {
             </Button>
           ) : user ? (
             <>
-              <Button variant="ghost" asChild>
+              {/* Admin Dashboard link removed, access admin section via direct nav or other cues */}
+              {/* If user is admin, they might directly go to /admin or see specific admin tools */}
+               <Button variant="ghost" asChild>
                 <Link href="/admin" className="flex items-center space-x-1 sm:space-x-2">
                   <ShieldCheck className="h-4 w-4" />
-                  <span className="hidden sm:inline">Dashboard</span>
+                  <span className="hidden sm:inline">Admin</span>
                 </Link>
               </Button>
               <Button variant="outline" onClick={handleSignOut} disabled={isSigningOut} className="flex items-center space-x-1 sm:space-x-2">
