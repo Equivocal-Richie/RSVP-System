@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -56,18 +57,12 @@ export default function AnalyticsClient() {
     setIsAiAnalyzing(true);
     setAiAnalysisResult(null); // Clear previous results
     
-    // We need to fetch the event description for the AI, as it's not in EventAnalyticRow
-    // For simplicity in this step, we'll pass a placeholder. 
-    // A more robust solution would be to fetch event details again or include description in EventAnalyticRow.
-    // However, the Genkit flow now only requires fields available in EventAnalyticRow for a basic analysis.
-    // Let's assume the event description is not strictly needed for this first pass of AI analysis or can be fetched server-side.
-
     const analysisInput: AnalyzeEventPerformanceInput = {
       eventId: eventRow.eventId,
       eventName: eventRow.eventName,
       eventDescription: "Event description would be fetched or passed here.", // Placeholder
       eventDate: eventRow.eventDate,
-      confirmedGuests: eventRow.confirmedGuests,
+      confirmedGuests: eventRow.confirmedGuests, // Added missing field
       seatLimit: eventRow.seatLimit,
       capacityFilledPercentage: eventRow.capacityFilledPercentage,
     };
@@ -281,3 +276,5 @@ export default function AnalyticsClient() {
     </div>
   );
 }
+
+    
