@@ -12,27 +12,29 @@ import {
   SidebarMenuButton,
   SidebarFooter,
   SidebarInset,
-  SidebarTrigger as ExternalSidebarTrigger, // Renamed to avoid conflict
+  SidebarTrigger as ExternalSidebarTrigger, 
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
-import { LayoutDashboard, BarChart3, Users, LogOut, PanelLeft, Image as ImageIcon, Settings } from "lucide-react";
+import { LayoutDashboard, BarChart3, Users, LogOut, PanelLeft, Settings, CalendarPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/icons/Logo";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"; // Added import
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
-import { auth as firebaseClientAuth } from '@/lib/firebaseClient'; // Renamed to avoid conflict with admin auth
+import { auth as firebaseClientAuth } from '@/lib/firebaseClient'; 
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
 
 const AdminNavItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/create-event", label: "Create Event", icon: CalendarPlus},
   { href: "/admin/analytics", label: "Event Analytics", icon: BarChart3 },
   { href: "/admin/guests", label: "Past Guests", icon: Users },
-  // { href: "/admin/settings", label: "Settings", icon: Settings }, // Example
+  // { href: "/admin/settings", label: "Settings", icon: Settings }, 
 ];
 
 function AdminSidebarInternalContent() {
@@ -41,18 +43,18 @@ function AdminSidebarInternalContent() {
 
   const handleLinkClick = () => {
     if (isMobile) {
-      setMobileOpen(false); // Close mobile sidebar on link click
+      setMobileOpen(false); 
     }
   };
 
   return (
     <>
-      <SidebarHeader>
+      <SidebarHeader className="h-16 flex items-center justify-between shrink-0 px-3">
         <Link href="/admin" className={cn("flex items-center gap-2 transition-opacity duration-300 text-sidebar-foreground hover:opacity-80", (isDesktopCollapsed && !isMobile) && "justify-center")}>
-          <Logo className={cn((isDesktopCollapsed && !isMobile) ? "h-8 w-8" : "h-7 w-auto")} />
+          <Logo className={cn("h-8 w-auto", (isDesktopCollapsed && !isMobile) && "h-8 w-8")} />
           <span className={cn("font-semibold text-lg", (isDesktopCollapsed && !isMobile) && "sr-only")}>RSVP Now</span>
         </Link>
-        {/* The mobile close button is now inside SidebarHeader component itself */}
+        {/* Mobile close is handled by SheetTrigger in AdminHeader if using Sheet for mobile sidebar */}
       </SidebarHeader>
       <SidebarContent>
         <SidebarMenu>
@@ -90,7 +92,7 @@ function UserProfileSection() {
   const handleSignOut = async () => {
     setIsSigningOut(true);
     try {
-      await signOut(firebaseClientAuth); // Use the renamed firebase client auth
+      await signOut(firebaseClientAuth); 
       toast({ title: "Signed Out", description: "You have been successfully signed out." });
       router.push('/'); 
     } catch (error) {
@@ -127,10 +129,11 @@ function UserProfileSection() {
                     size="icon"
                     className={cn(
                         "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                        !(isDesktopCollapsed && !isMobile) && "ml-auto" // Only ml-auto if sidebar is expanded
+                        !(isDesktopCollapsed && !isMobile) && "ml-auto" 
                     )}
                     onClick={handleSignOut}
                     disabled={isSigningOut}
+                    aria-label="Sign Out"
                 >
                     <LogOut className="h-5 w-5" />
                 </Button>
@@ -144,23 +147,28 @@ function UserProfileSection() {
   );
 }
 
-// New Admin specific header
+// Admin specific header
 function AdminHeader() {
-    const { isMobile } = useSidebar();
+    const { isMobile, isDesktopCollapsed } = useSidebar();
     const pathname = usePathname();
-    const currentNavItem = AdminNavItems.find(item => pathname.startsWith(item.href));
-    const pageTitle = currentNavItem?.label || "Admin";
+    
+    const currentNavItem = AdminNavItems.find(item => {
+      if (item.href === "/admin") return pathname === "/admin";
+      return pathname.startsWith(item.href);
+    });
+    const pageTitle = currentNavItem?.label || "Admin Dashboard";
 
     return (
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-background px-4 md:px-6 shadow-sm">
             <div className="flex items-center gap-2">
-                {/* Use the SidebarTrigger imported from your ui/sidebar component */}
-                <ExternalSidebarTrigger className="text-primary"/>
+                <ExternalSidebarTrigger className="text-foreground hover:bg-accent/10"/>
                 <h1 className="text-lg font-semibold text-foreground hidden md:block">{pageTitle}</h1>
             </div>
-            {/* Placeholder for other header items like search, notifications, user menu if needed */}
+            {/* Mobile page title for context, since AdminSidebarInternalContent doesn't have page context */}
+            {isMobile && <h1 className="text-lg font-semibold text-foreground md:hidden">{pageTitle}</h1>}
+            
             <div className="flex items-center gap-4">
-                {/* Example: <Button variant="outline" size="icon"><Settings className="h-5 w-5"/></Button> */}
+                {/* Placeholder for other header items like search, notifications */}
             </div>
         </header>
     );
@@ -177,11 +185,11 @@ export default function AdminLayout({
 
   React.useEffect(() => {
     if (!authLoading && !user) {
-      router.replace('/auth?redirect=/admin'); // Redirect to auth if not logged in, with callback
+      router.replace('/auth?redirect=' + window.location.pathname); 
     }
   }, [user, authLoading, router]);
 
-  if (authLoading || (!user && typeof window !== 'undefined' && window.location.pathname.startsWith('/admin'))) {
+  if (authLoading) {
      return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-background">
             <Logo className="h-12 w-auto mb-4"/>
@@ -192,21 +200,30 @@ export default function AdminLayout({
         </div>
     );
   }
-  // If still no user after loading and already on an admin path, this might flicker before redirect.
-  // The redirect in useEffect should handle it.
-  if (!user) return null; 
+  
+  if (!user && typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+    // This case might be hit briefly before useEffect redirect fires.
+    // Returning null or a minimal loader avoids rendering admin content to unauth users.
+    return ( 
+        <div className="flex flex-col items-center justify-center min-h-screen bg-background">
+           <p className="text-lg text-muted-foreground">Redirecting to login...</p>
+        </div>
+    );
+  }
+  
+  if (!user) return null; // Should be caught by useEffect redirect
 
 
   return (
-    <SidebarProvider defaultOpen={true}> {/* Ensure defaultOpen is true for desktop */}
-      <div className="flex min-h-screen bg-muted/40"> {/* Slightly off-white background for content area */}
+    <SidebarProvider defaultOpen={true}> 
+      <div className="flex min-h-screen bg-muted/30"> 
         <Sidebar>
           <AdminSidebarInternalContent />
         </Sidebar>
         
-        <div className="flex flex-col flex-1"> {/* Wrapper for header and content inset */}
+        <div className="flex flex-col flex-1"> 
             <AdminHeader />
-            <SidebarInset> {/* SidebarInset now just handles margin based on sidebar state */}
+            <SidebarInset> 
                 <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
                 {children}
                 </main>
@@ -216,4 +233,6 @@ export default function AdminLayout({
     </SidebarProvider>
   );
 }
+    
+
     
