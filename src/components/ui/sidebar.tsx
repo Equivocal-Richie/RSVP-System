@@ -6,11 +6,11 @@ import { Slot } from "@radix-ui/react-slot"
 import { VariantProps, cva } from "class-variance-authority"
 import { PanelLeft, X } from "lucide-react" 
 
-import { useIsMobile } from "@/hooks/use-mobile" // Assuming you have this hook
+import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { Sheet, SheetContent, SheetClose, SheetTrigger as RadixSheetTrigger } from "@/components/ui/sheet" 
+import { Sheet, SheetContent, SheetClose } from "@/components/ui/sheet" // Removed RadixSheetTrigger import here as it's not needed by SidebarTrigger
 import {
   Tooltip,
   TooltipContent,
@@ -18,13 +18,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-const SIDEBAR_COOKIE_NAME = "sidebar_desktop_state_v2"; // Use a new name if structure changed
+const SIDEBAR_COOKIE_NAME = "sidebar_desktop_state_v2";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
-// Define CSS variables for widths for easier management
-const SIDEBAR_WIDTH_EXPANDED = "16rem"; // ~256px
-const SIDEBAR_WIDTH_COLLAPSED = "4.5rem"; // ~72px
-const SIDEBAR_WIDTH_MOBILE = "18rem"; // ~288px
+const SIDEBAR_WIDTH_EXPANDED = "16rem"; 
+const SIDEBAR_WIDTH_COLLAPSED = "3.75rem"; // Approx 60px, suitable for icons
+const SIDEBAR_WIDTH_MOBILE = "18rem"; 
 
 
 interface SidebarContextProps {
@@ -50,12 +49,11 @@ export function useSidebar() {
 
 export const SidebarProvider: React.FC<React.PropsWithChildren<{ defaultOpen?: boolean }>> = ({
   children,
-  defaultOpen = true, // Default state for desktop sidebar
+  defaultOpen = true, 
 }) => {
   const isMobile = useIsMobile()
   const [isMobileOpen, setMobileOpen] = React.useState(false)
   
-  // For desktop, read from cookie or use defaultOpen
   const [isDesktopOpenState, setDesktopOpenState] = React.useState(() => {
     if (typeof window !== "undefined") {
       const cookieValue = document.cookie
@@ -79,10 +77,7 @@ export const SidebarProvider: React.FC<React.PropsWithChildren<{ defaultOpen?: b
 
   React.useEffect(() => {
     if (isMobile) {
-      // On mobile, desktop state doesn't directly control a fixed sidebar,
-      // but we keep its cookie state for when returning to desktop.
-      // Mobile uses isMobileOpen for its sheet.
-      setMobileOpen(false); // Ensure mobile sidebar is closed on mount or when switching to mobile
+      setMobileOpen(false); 
     }
   }, [isMobile]);
 
@@ -95,18 +90,18 @@ export const SidebarProvider: React.FC<React.PropsWithChildren<{ defaultOpen?: b
     isMobile,
     toggleDesktopSidebar,
     toggleMobileSidebar,
-    isDesktopCollapsed: !isDesktopOpenState && !isMobile, // Collapsed only if desktop and not open
-  }), [isDesktopOpenState, isMobileOpen, isMobile, setDesktopOpen]);
+    isDesktopCollapsed: !isDesktopOpenState && !isMobile, 
+  }), [isDesktopOpenState, isMobileOpen, isMobile, setDesktopOpen, toggleDesktopSidebar, toggleMobileSidebar]);
 
   return (
     <SidebarContext.Provider value={contextValue}>
-      {/* TooltipProvider can be here or at a higher level if needed elsewhere */}
-      {children} 
+      <TooltipProvider delayDuration={100}> 
+        {children}
+      </TooltipProvider>
     </SidebarContext.Provider>
   )
 }
 
-// Main Sidebar Container
 export const Sidebar = React.forwardRef<
   HTMLDivElement, 
   React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode }
@@ -116,7 +111,6 @@ export const Sidebar = React.forwardRef<
   if (isMobile) {
     return (
       <Sheet open={isMobileOpen} onOpenChange={setMobileOpen}>
-        {/* The actual SheetTrigger is expected to be in AdminHeader or similar */}
         <SheetContent
           side="left"
           className={cn(
@@ -124,8 +118,8 @@ export const Sidebar = React.forwardRef<
             className
           )}
           style={{ '--sidebar-width-mobile': SIDEBAR_WIDTH_MOBILE } as React.CSSProperties}
-          showCloseButton={false} // We'll put a custom close button in SidebarHeader for mobile sheet
-          {...props} // Pass remaining props like ref if any
+          showCloseButton={false} 
+          {...props} 
         >
           {children}
         </SheetContent>
@@ -133,13 +127,12 @@ export const Sidebar = React.forwardRef<
     );
   }
 
-  // Desktop Sidebar
   return (
     <aside
       ref={ref}
       data-state={isDesktopOpen ? "expanded" : "collapsed"}
       className={cn(
-        "hidden md:flex flex-col fixed top-0 left-0 h-full z-40 bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-300 ease-in-out overflow-y-auto", // Added h-full and overflow-y-auto
+        "hidden md:flex flex-col fixed top-0 left-0 h-full z-40 bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-300 ease-in-out overflow-y-auto", 
         isDesktopOpen ? "w-[var(--sidebar-width-expanded)]" : "w-[var(--sidebar-width-collapsed)]",
         className
       )}
@@ -156,39 +149,35 @@ export const Sidebar = React.forwardRef<
 Sidebar.displayName = "Sidebar";
 
 
-// Sidebar Trigger (to be placed in a header)
 export const SidebarTrigger = React.forwardRef<
   React.ElementRef<typeof Button>,
   Omit<React.ComponentProps<typeof Button>, "onClick" | "aria-label"> & { "aria-label"?: string}
 >(({ className, children, ...props }, ref) => {
-  const { toggleDesktopSidebar, toggleMobileSidebar, isMobile, isMobileOpen, isDesktopOpen } = useSidebar();
+  const { toggleDesktopSidebar, isMobile, isMobileOpen, setMobileOpen, isDesktopOpen } = useSidebar();
   
-  // For mobile, the trigger is for the Sheet, so it should be part of RadixSheetTrigger
   if (isMobile) {
     return (
-      <RadixSheetTrigger asChild>
-        <Button
-          ref={ref}
-          variant="ghost"
-          size="icon"
-          className={cn("text-foreground hover:bg-accent/10 md:hidden", className)} // Show only on mobile
-          aria-label={isMobileOpen ? "Close menu" : "Open menu"}
-          {...props}
-        >
-          {children || (isMobileOpen ? <X className="h-5 w-5" /> : <PanelLeft className="h-5 w-5" />)}
-        </Button>
-      </RadixSheetTrigger>
+      <Button
+        ref={ref}
+        variant="ghost"
+        size="icon"
+        className={cn("text-foreground hover:bg-accent/10 md:hidden", className)} 
+        onClick={() => setMobileOpen(!isMobileOpen)}
+        aria-label={isMobileOpen ? "Close menu" : "Open menu"}
+        {...props}
+      >
+        {children || (isMobileOpen ? <X className="h-5 w-5" /> : <PanelLeft className="h-5 w-5" />)}
+      </Button>
     );
   }
 
-  // For desktop, it's a regular button toggling the fixed sidebar
   const label = isDesktopOpen ? "Collapse menu" : "Expand menu";
   return (
     <Button
       ref={ref}
       variant="ghost"
       size="icon"
-      className={cn("text-foreground hover:bg-accent/10 hidden md:flex", className)} // Show only on desktop
+      className={cn("text-foreground hover:bg-accent/10 hidden md:flex", className)} 
       onClick={toggleDesktopSidebar}
       aria-label={label}
       {...props}
@@ -200,7 +189,6 @@ export const SidebarTrigger = React.forwardRef<
 SidebarTrigger.displayName = "SidebarTrigger";
 
 
-// Sidebar Header (inside Sidebar)
 export const SidebarHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -216,7 +204,7 @@ export const SidebarHeader = React.forwardRef<
       {...props}
     >
       {children}
-      {isMobile && isMobileOpen && ( // Show close button only when mobile sheet is open
+      {isMobile && isMobileOpen && ( 
          <Button variant="ghost" size="icon" onClick={toggleMobileSidebar} aria-label="Close menu" className="text-sidebar-foreground hover:bg-sidebar-accent">
             <X className="h-5 w-5"/>
          </Button>
@@ -226,21 +214,19 @@ export const SidebarHeader = React.forwardRef<
 });
 SidebarHeader.displayName = "SidebarHeader";
 
-// Sidebar Content (Scrollable Area for Menu)
 export const SidebarContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex-grow overflow-y-auto overflow-x-hidden p-3 space-y-1.5", className)} // Added more space
+    className={cn("flex-grow overflow-y-auto overflow-x-hidden p-3 space-y-1.5", className)} 
     {...props}
   />
 ));
 SidebarContent.displayName = "SidebarContent";
 
 
-// Sidebar Menu (UL)
 export const SidebarMenu = React.forwardRef<
   HTMLUListElement,
   React.HTMLAttributes<HTMLUListElement>
@@ -254,7 +240,6 @@ export const SidebarMenu = React.forwardRef<
 SidebarMenu.displayName = "SidebarMenu";
 
 
-// Sidebar Menu Item (LI)
 export const SidebarMenuItem = React.forwardRef<
   HTMLLIElement,
   React.HTMLAttributes<HTMLLIElement>
@@ -268,7 +253,6 @@ export const SidebarMenuItem = React.forwardRef<
 SidebarMenuItem.displayName = "SidebarMenuItem";
 
 
-// Sidebar Menu Button (Button or A)
 const sidebarMenuButtonVariants = cva(
   "flex items-center w-full text-left rounded-md text-sm font-medium transition-colors duration-150 ease-in-out outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar-background disabled:opacity-50 disabled:pointer-events-none",
   {
@@ -277,9 +261,9 @@ const sidebarMenuButtonVariants = cva(
         true: "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90",
         false: "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
       },
-      isCollapsed: { // Only for desktop collapsed state
-        true: "justify-center p-2.5 aspect-square", // Adjusted padding for icons
-        false: "px-3 py-2.5 gap-3", // Standard padding
+      isCollapsed: { 
+        true: "justify-center p-2.5 aspect-square", 
+        false: "px-3 py-2.5 gap-3", 
       }
     },
     defaultVariants: {
@@ -327,21 +311,19 @@ export const SidebarMenuButton = React.forwardRef<
 SidebarMenuButton.displayName = "SidebarMenuButton";
 
 
-// Sidebar Footer
 export const SidebarFooter = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("mt-auto border-t border-sidebar-border shrink-0", className)} // Removed padding, handled by UserProfileSection
+    className={cn("mt-auto border-t border-sidebar-border shrink-0", className)} 
     {...props}
   />
 ));
 SidebarFooter.displayName = "SidebarFooter";
 
 
-// SidebarInset (Main Content Wrapper)
 export const SidebarInset = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -352,7 +334,7 @@ export const SidebarInset = React.forwardRef<
     <div
       ref={ref}
       className={cn(
-        "flex flex-col flex-1 transition-all duration-300 ease-in-out overflow-hidden", // Added overflow-hidden
+        "flex flex-col flex-1 transition-all duration-300 ease-in-out overflow-hidden", 
         !isMobile && 
           (isDesktopOpen
             ? "md:ml-[var(--sidebar-width-expanded)]"
@@ -368,6 +350,3 @@ export const SidebarInset = React.forwardRef<
   );
 });
 SidebarInset.displayName = "SidebarInset";
-    
-
-    
