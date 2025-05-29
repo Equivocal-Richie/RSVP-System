@@ -106,3 +106,32 @@ export interface EventAnalyticRow {
   capacityFilledPercentage: number | null; // null if seatLimit is 0 or less
   changeFromPreviousPercentage: number | null; // null if no previous event or previous event had no seat limit
 }
+
+// For AI Event Analysis
+export interface AnalyzeEventPerformanceInput {
+  eventId: string;
+  eventName: string;
+  eventDescription: string;
+  eventDate: TimestampString;
+  confirmedGuests: number;
+  seatLimit: number;
+  capacityFilledPercentage: number | null;
+  // guestFeedbackSummary?: string; // Future enhancement
+}
+
+export interface EventAnalysisOutput {
+  insights: string[];
+  suggestions: string[];
+  overallSentiment?: string; // Future enhancement
+}
+
+// For Past Guests Page
+export interface UserGuestRow {
+  eventId: string;
+  eventName: string;
+  eventDate: TimestampString;
+  guestId: string;
+  guestName: string;
+  guestEmail: string;
+  status: RsvpStatus;
+}

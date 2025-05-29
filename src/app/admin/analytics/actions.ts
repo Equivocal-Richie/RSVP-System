@@ -1,8 +1,9 @@
 
 "use server";
 
-import { getAllEventsForUser } from "@/lib/db";
-import type { EventData, EventAnalyticRow } from "@/types";
+import { getAllEventsForUser, getEventById } from "@/lib/db";
+import type { EventData, EventAnalyticRow, AnalyzeEventPerformanceInput, EventAnalysisOutput } from "@/types";
+import { analyzeEventPerformance } from '@/ai/flows/analyze-event-performance-flow';
 
 export async function fetchEventAnalyticsData(userId: string): Promise<{ analytics: EventAnalyticRow[], error?: string }> {
   if (!userId) {
@@ -33,8 +34,6 @@ export async function fetchEventAnalyticsData(userId: string): Promise<{ analyti
              changeFromPreviousPercentage = capacityFilledPercentage - previousCapacityFilled;
           }
         }
-        // If one or both don't have seat limits, comparison is less direct.
-        // Could compare raw confirmed counts if needed, but keeping to percentage for now.
       }
       
       analyticsRows.push({
@@ -52,5 +51,34 @@ export async function fetchEventAnalyticsData(userId: string): Promise<{ analyti
   } catch (error) {
     console.error("Error fetching event analytics data:", error);
     return { analytics: [], error: "Failed to fetch event analytics." };
+  }
+}
+
+
+export async function triggerEventAiAnalysis(input: AnalyzeEventPerformanceInput): Promise<EventAnalysisOutput | { error: string }> {
+  try {
+    // Fetch full event details if only partial data is sent from client
+    // For now, assume 'input' contains all necessary fields for the AI flow as defined in AnalyzeEventPerformanceInput
+    
+    // Example: If you only passed eventId and needed to fetch more details:
+    // const eventDetails = await getEventById(input.eventId);
+    // if (!eventDetails) return { error: "Event not found for AI analysis." };
+    // const fullAiInput: AnalyzeEventPerformanceInput = {
+    //   ...input, // could be just eventId from client
+    //   eventName: eventDetails.name,
+    //   eventDescription: eventDetails.description,
+    //   eventDate: eventDetails.date,
+    //   confirmedGuests: eventDetails.confirmedGuestsCount,
+    //   seatLimit: eventDetails.seatLimit,
+    //   // capacityFilledPercentage might need to be recalculated or passed if client has it
+    // };
+    // const result = await analyzeEventPerformance(fullAiInput);
+
+    const result = await analyzeEventPerformance(input);
+    return result;
+  } catch (error) {
+    console.error("AI Event Analysis Error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to perform AI analysis on event.";
+    return { error: errorMessage };
   }
 }

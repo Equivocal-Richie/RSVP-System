@@ -1,14 +1,13 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchEventAnalyticsData } from '../actions';
-import type { EventAnalyticRow } from '@/types';
+import { fetchEventAnalyticsData, triggerEventAiAnalysis } from '../actions';
+import type { EventAnalyticRow, AnalyzeEventPerformanceInput, EventAnalysisOutput } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from "@/components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Activity, BarChart3, ArrowUpCircle, ArrowDownCircle, AlertCircle, Info } from 'lucide-react';
+import { Activity, BarChart3, ArrowUpCircle, ArrowDownCircle, AlertCircle, Info, Sparkles, Lightbulb, TrendingUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -20,6 +19,11 @@ export default function AnalyticsClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const [analyzingEventId, setAnalyzingEventId] = useState<string | null>(null);
+  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+  const [aiAnalysisResult, setAiAnalysisResult] = useState<EventAnalysisOutput | null>(null);
+
 
   useEffect(() => {
     async function loadAnalytics() {
@@ -47,16 +51,44 @@ export default function AnalyticsClient() {
     loadAnalytics();
   }, [user, authLoading, toast]);
 
-  const handleAiAnalysis = (eventId: string, eventName: string) => {
-    // Placeholder for actual AI analysis call
-    toast({
-      title: "AI Analysis Triggered (Placeholder)",
-      description: `AI analysis for "${eventName}" would be processed here.`,
-    });
-    console.log("Trigger AI Analysis for event ID:", eventId);
-    // Later, this would call a server action that invokes a Genkit flow
-    // e.g., const result = await triggerEventAiAnalysis(eventId);
-    // And then display results, perhaps in a dialog or below the table row.
+  const handleAiAnalysis = async (eventRow: EventAnalyticRow) => {
+    setAnalyzingEventId(eventRow.eventId);
+    setIsAiAnalyzing(true);
+    setAiAnalysisResult(null); // Clear previous results
+    
+    // We need to fetch the event description for the AI, as it's not in EventAnalyticRow
+    // For simplicity in this step, we'll pass a placeholder. 
+    // A more robust solution would be to fetch event details again or include description in EventAnalyticRow.
+    // However, the Genkit flow now only requires fields available in EventAnalyticRow for a basic analysis.
+    // Let's assume the event description is not strictly needed for this first pass of AI analysis or can be fetched server-side.
+
+    const analysisInput: AnalyzeEventPerformanceInput = {
+      eventId: eventRow.eventId,
+      eventName: eventRow.eventName,
+      eventDescription: "Event description would be fetched or passed here.", // Placeholder
+      eventDate: eventRow.eventDate,
+      confirmedGuests: eventRow.confirmedGuests,
+      seatLimit: eventRow.seatLimit,
+      capacityFilledPercentage: eventRow.capacityFilledPercentage,
+    };
+
+    const result = await triggerEventAiAnalysis(analysisInput);
+
+    if ("error" in result) {
+      toast({
+        title: "AI Analysis Error",
+        description: result.error,
+        variant: "destructive",
+      });
+      setAiAnalysisResult(null);
+    } else {
+      setAiAnalysisResult(result);
+      toast({
+        title: "AI Analysis Complete",
+        description: `Insights generated for "${eventRow.eventName}".`,
+      });
+    }
+    setIsAiAnalyzing(false);
   };
 
   if (isLoading || authLoading) {
@@ -113,7 +145,7 @@ export default function AnalyticsClient() {
             Event Performance Analytics
           </CardTitle>
           <CardDescription>
-            Review metrics for your past events to understand engagement and success.
+            Review metrics for your past events to understand engagement and success. Use AI for deeper insights.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -159,9 +191,15 @@ export default function AnalyticsClient() {
                     <Button 
                         variant="outline" 
                         size="sm" 
-                        onClick={() => handleAiAnalysis(event.eventId, event.eventName)}
+                        onClick={() => handleAiAnalysis(event)}
+                        disabled={isAiAnalyzing && analyzingEventId === event.eventId}
                         className="bg-accent text-accent-foreground hover:bg-accent/90"
                     >
+                      {isAiAnalyzing && analyzingEventId === event.eventId ? (
+                        <Activity className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="mr-2 h-4 w-4" />
+                      )}
                       Analyze
                     </Button>
                   </TableCell>
@@ -174,6 +212,51 @@ export default function AnalyticsClient() {
           </Table>
         </CardContent>
       </Card>
+
+      {analyzingEventId && aiAnalysisResult && !isAiAnalyzing && (
+        <Card className="shadow-lg mt-6 animate-fadeIn">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Lightbulb className="mr-2 h-6 w-6 text-yellow-500" />
+              AI Analysis for: {analyticsData.find(e => e.eventId === analyzingEventId)?.eventName}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {aiAnalysisResult.insights && aiAnalysisResult.insights.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-lg flex items-center mb-2"><TrendingUp className="mr-2 h-5 w-5 text-primary"/>Insights:</h3>
+                <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+                  {aiAnalysisResult.insights.map((insight, index) => <li key={`insight-${index}`}>{insight}</li>)}
+                </ul>
+              </div>
+            )}
+            {aiAnalysisResult.suggestions && aiAnalysisResult.suggestions.length > 0 && (
+               <div>
+                <h3 className="font-semibold text-lg flex items-center mt-4 mb-2"><Sparkles className="mr-2 h-5 w-5 text-primary"/>Suggestions:</h3>
+                <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+                  {aiAnalysisResult.suggestions.map((suggestion, index) => <li key={`suggestion-${index}`}>{suggestion}</li>)}
+                </ul>
+              </div>
+            )}
+            {aiAnalysisResult.overallSentiment && (
+                <div>
+                    <h3 className="font-semibold text-lg flex items-center mt-4 mb-2">Overall Sentiment:</h3>
+                    <p className="text-sm text-muted-foreground">{aiAnalysisResult.overallSentiment}</p>
+                </div>
+            )}
+             {(!aiAnalysisResult.insights || aiAnalysisResult.insights.length === 0) && (!aiAnalysisResult.suggestions || aiAnalysisResult.suggestions.length === 0) && (
+                <p className="text-sm text-muted-foreground">AI analysis did not return specific insights or suggestions for this event.</p>
+             )}
+          </CardContent>
+        </Card>
+      )}
+       {isAiAnalyzing && analyzingEventId && (
+         <div className="flex justify-center items-center h-32 mt-6">
+            <Activity className="h-8 w-8 animate-spin text-primary" />
+            <span className="ml-3 text-muted-foreground">AI is analyzing, please wait...</span>
+         </div>
+       )}
+
        <Alert variant="default" className="bg-card border-primary/30">
           <Info className="h-4 w-4 text-primary" />
           <AlertTitle className="text-primary">Understanding The Metrics</AlertTitle>
@@ -181,10 +264,20 @@ export default function AnalyticsClient() {
             <ul className="list-disc pl-5 space-y-1 text-sm">
                 <li><strong>Capacity Filled:</strong> Percentage of available seats filled (if seat limit was set).</li>
                 <li><strong>Change vs Prev.:</strong> Difference in 'Capacity Filled %' compared to the event held immediately before this one (if both had seat limits).</li>
-                <li><strong>AI Analysis:</strong> (Future Feature) Click to get AI-powered insights and suggestions for a specific event.</li>
+                <li><strong>AI Analysis:</strong> Click to get AI-powered insights and suggestions for a specific event. (Note: Guest feedback analysis is a future enhancement).</li>
             </ul>
           </AlertDescription>
         </Alert>
+
+        <style jsx global>{`
+            .animate-fadeIn {
+            animation: fadeIn 0.5s ease-out;
+            }
+            @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+            }
+        `}</style>
     </div>
   );
 }
