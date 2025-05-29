@@ -1,36 +1,25 @@
 
-"use client"; // Header needs to be client for useAuth and router
+"use client"; 
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import Logo from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
-import { Home, LogIn, LogOut, UserCircle, Loader2, ShieldCheck } from 'lucide-react'; // Added ShieldCheck back
+import { Home, LogIn, Loader2 } from 'lucide-react'; 
 import { useAuth } from '@/contexts/AuthContext';
-import { auth } from '@/lib/firebaseClient'; // Firebase client auth instance
-import { signOut } from 'firebase/auth';
-import { useToast } from '@/hooks/use-toast';
-import { useState } from 'react';
+// Removed: import { auth } from '@/lib/firebaseClient';
+// Removed: import { signOut } from 'firebase/auth';
+// Removed: import { useToast } from '@/hooks/use-toast';
+// Removed: import { useState } from 'react';
 
 const Header = () => {
   const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
-  const { toast } = useToast();
-  const [isSigningOut, setIsSigningOut] = useState(false);
+  const pathname = usePathname();
+  // const router = useRouter(); // Not needed if sign-out handled by sidebar
+  // const { toast } = useToast(); // Not needed
+  // const [isSigningOut, setIsSigningOut] = useState(false); // Moved to AdminLayout
 
-  const handleSignOut = async () => {
-    setIsSigningOut(true);
-    try {
-      await signOut(auth);
-      toast({ title: "Signed Out", description: "You have been successfully signed out." });
-      router.push('/'); // Redirect to home page after sign out
-    } catch (error) {
-      console.error("Sign out error:", error);
-      toast({ title: "Sign Out Error", description: "Failed to sign out. Please try again.", variant: "destructive" });
-    } finally {
-      setIsSigningOut(false);
-    }
-  };
+  const isAdminRoute = pathname.startsWith('/admin');
 
   return (
     <header className="bg-card border-b border-border shadow-sm sticky top-0 z-50">
@@ -46,33 +35,24 @@ const Header = () => {
             </Link>
           </Button>
 
-          {authLoading ? (
+          {authLoading && !isAdminRoute ? ( // Show loader only if not in admin and loading
             <Button variant="ghost" disabled>
               <Loader2 className="h-4 w-4 animate-spin" />
             </Button>
-          ) : user ? (
-            <>
-              {/* Admin Dashboard link removed, access admin section via direct nav or other cues */}
-              {/* If user is admin, they might directly go to /admin or see specific admin tools */}
-               <Button variant="ghost" asChild>
-                <Link href="/admin" className="flex items-center space-x-1 sm:space-x-2">
-                  <ShieldCheck className="h-4 w-4" />
-                  <span className="hidden sm:inline">Admin</span>
-                </Link>
-              </Button>
-              <Button variant="outline" onClick={handleSignOut} disabled={isSigningOut} className="flex items-center space-x-1 sm:space-x-2">
-                {isSigningOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-                <span className="hidden sm:inline">Sign Out</span>
-              </Button>
-            </>
-          ) : (
+          ) : !user && !isAdminRoute ? ( // Show sign-in only if not user and not in admin
             <Button variant="default" asChild>
               <Link href="/auth" className="flex items-center space-x-1 sm:space-x-2">
                 <LogIn className="h-4 w-4" />
                 <span className="hidden sm:inline">Sign In / Up</span>
               </Link>
             </Button>
-          )}
+          ) : null}
+          {/* 
+            If user is logged in AND on an admin route, the AdminLayout's sidebar handles profile/logout.
+            If user is logged in AND NOT on an admin route, this header doesn't show logout for now.
+            This simplifies the header logic, assuming admin actions are primary for logged-in users.
+            A more complex app might have a user profile dropdown here too.
+          */}
         </nav>
       </div>
     </header>

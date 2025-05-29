@@ -1,0 +1,120 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 93%; /* #EEEEEE - Light Gray */
+    --foreground: 0 0% 20%; /* #333333 - Dark Gray */
+
+    --card: 0 0% 100%; /* White */
+    --card-foreground: 0 0% 13%; /* Darker Gray for card text */
+
+    --popover: 0 0% 100%; /* White */
+    --popover-foreground: 0 0% 13%; /* Darker Gray for popover text */
+
+    --primary: 231 48% 48%; /* #3F51B5 - Deep Blue */
+    --primary-foreground: 0 0% 100%; /* White */
+
+    --secondary: 231 40% 90%; /* Lighter shade of primary */
+    --secondary-foreground: 231 48% 30%; /* Darker shade of primary for text on secondary */
+
+    --muted: 0 0% 85%; /* Slightly darker gray for muted elements */
+    --muted-foreground: 0 0% 40%; /* Darker gray for muted text */
+
+    --accent: 174 100% 29%; /* #009688 - Teal */
+    --accent-foreground: 0 0% 100%; /* White */
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 80%; /* Border color for light theme */
+    --input: 0 0% 88%; /* Input background for light theme */
+    --ring: 231 48% 48%; /* Ring color - Deep Blue */
+
+    --radius: 0.5rem;
+
+    --chart-1: 231 48% 48%;
+    --chart-2: 174 100% 29%;
+    --chart-3: 231 40% 65%;
+    --chart-4: 174 80% 45%;
+    --chart-5: 0 0% 50%;
+
+    /* Sidebar specific theme variables for a more "futuristic" or distinct feel */
+    --sidebar-background: 240 10% 4%; /* Very dark blue/charcoal */
+    --sidebar-foreground: 240 5% 85%; /* Light grey/off-white for text */
+    
+    --sidebar-primary: 190 80% 50%; /* A vibrant cyan/teal for active items */
+    --sidebar-primary-foreground: 240 10% 4%; /* Dark text on active items */
+    
+    --sidebar-accent: 240 10% 15%; /* Slightly lighter dark for hover/accent backgrounds */
+    --sidebar-accent-foreground: 190 80% 60%; /* Brighter cyan/teal for text on hover */
+    
+    --sidebar-border: 240 10% 10%; /* Dark border */
+    --sidebar-ring: 190 80% 55%;  /* Ring color for focus, matches primary */
+  }
+
+  .dark {
+    --background: 240 10% 4%; /* Dark Charcoal for main background */
+    --foreground: 0 0% 85%; /* Light Gray, adjusted for dark */
+
+    --card: 240 10% 10%; /* Darker card background */
+    --card-foreground: 0 0% 85%;
+
+    --popover: 240 10% 12%;
+    --popover-foreground: 0 0% 85%;
+
+    --primary: 190 70% 55%; /* Brighter Cyan for primary elements */
+    --primary-foreground: 240 10% 4%; 
+
+    --secondary: 240 10% 18%; 
+    --secondary-foreground: 0 0% 80%;
+
+    --muted: 240 10% 22%;
+    --muted-foreground: 0 0% 60%;
+
+    --accent: 174 70% 55%; 
+    --accent-foreground: 0 0% 10%; 
+
+    --destructive: 0 62.8% 30.6%; /* Darker red */
+    --destructive-foreground: 0 0% 90%;
+
+    --border: 240 10% 15%;
+    --input: 240 10% 16%;
+    --ring: 190 70% 55%; 
+    
+    --chart-1: 0 0% 85%;
+    --chart-2: 174 70% 55%;
+    --chart-3: 0 0% 65%;
+    --chart-4: 174 60% 40%;
+    --chart-5: 0 0% 50%;
+
+    /* Dark theme Sidebar variables - can be same as light or slightly adjusted */
+    --sidebar-background: 240 10% 8%; /* Slightly lighter than main dark bg for distinctness */
+    --sidebar-foreground: 240 5% 80%; 
+    
+    --sidebar-primary: 190 80% 55%; 
+    --sidebar-primary-foreground: 240 10% 4%; 
+    
+    --sidebar-accent: 240 10% 20%; 
+    --sidebar-accent-foreground: 190 80% 65%; 
+    
+    --sidebar-border: 240 10% 12%; 
+    --sidebar-ring: 190 80% 60%; 
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-geist-sans), sans-serif; /* Ensure Geist Sans is primary */
+  }
+}
