@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from "react";
@@ -11,19 +12,19 @@ import {
   SidebarMenuButton,
   SidebarFooter,
   SidebarInset,
-  SidebarTrigger,
-  useSidebar, // Import useSidebar to allow child components to access context
+  SidebarTrigger as ExternalSidebarTrigger, // Renamed to avoid conflict
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
-import { LayoutDashboard, BarChart3, Users, LogOut, Settings, PanelLeft, Image as ImageIcon } from "lucide-react"; // Added ImageIcon
+import { LayoutDashboard, BarChart3, Users, LogOut, PanelLeft, Image as ImageIcon, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/icons/Logo";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
-import { auth } from '@/lib/firebaseClient';
+import { auth as firebaseClientAuth } from '@/lib/firebaseClient'; // Renamed to avoid conflict with admin auth
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
 
@@ -34,8 +35,8 @@ const AdminNavItems = [
   // { href: "/admin/settings", label: "Settings", icon: Settings }, // Example
 ];
 
-function AdminSidebarContent() {
-  const { isDesktopCollapsed, isMobile, setMobileOpen } = useSidebar();
+function AdminSidebarInternalContent() {
+  const { isMobile, isDesktopCollapsed, setMobileOpen } = useSidebar();
   const pathname = usePathname();
 
   const handleLinkClick = () => {
@@ -47,11 +48,11 @@ function AdminSidebarContent() {
   return (
     <>
       <SidebarHeader>
-        <Link href="/admin" className={cn("transition-opacity duration-300", isDesktopCollapsed && !isMobile ? "opacity-0 w-0 h-0" : "opacity-100")}>
-          <Logo />
+        <Link href="/admin" className={cn("flex items-center gap-2 transition-opacity duration-300 text-sidebar-foreground hover:opacity-80", (isDesktopCollapsed && !isMobile) && "justify-center")}>
+          <Logo className={cn((isDesktopCollapsed && !isMobile) ? "h-8 w-8" : "h-7 w-auto")} />
+          <span className={cn("font-semibold text-lg", (isDesktopCollapsed && !isMobile) && "sr-only")}>RSVP Now</span>
         </Link>
-        {/* SidebarTrigger for desktop collapsing. Mobile trigger is in AdminMobileHeader */}
-        {!isMobile && <SidebarTrigger />}
+        {/* The mobile close button is now inside SidebarHeader component itself */}
       </SidebarHeader>
       <SidebarContent>
         <SidebarMenu>
@@ -59,13 +60,13 @@ function AdminSidebarContent() {
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
                 asChild
-                isActive={pathname === item.href}
+                isActive={pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href))}
                 tooltip={item.label}
                 onClick={handleLinkClick}
               >
                 <Link href={item.href} className="flex items-center">
-                  <item.icon />
-                  {!isMobile && isDesktopCollapsed ? null : <span className="ml-3 truncate">{item.label}</span>}
+                  <item.icon className={cn("shrink-0", (isDesktopCollapsed && !isMobile) ? "size-6" : "size-5")} />
+                  <span className={cn("ml-3 truncate", (isDesktopCollapsed && !isMobile) && "sr-only")}>{item.label}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -89,7 +90,7 @@ function UserProfileSection() {
   const handleSignOut = async () => {
     setIsSigningOut(true);
     try {
-      await signOut(auth);
+      await signOut(firebaseClientAuth); // Use the renamed firebase client auth
       toast({ title: "Signed Out", description: "You have been successfully signed out." });
       router.push('/'); 
     } catch (error) {
@@ -103,51 +104,64 @@ function UserProfileSection() {
   if (!user) return null;
 
   const userDisplayName = user.displayName || user.email || "Event Organizer";
-  const userAvatarFallback = (user.displayName || user.email || "U")?.[0]?.toUpperCase() || "U";
+  const userAvatarFallback = (user.displayName?.substring(0,1) || user.email?.substring(0,1) || "U").toUpperCase();
 
   return (
-    <div className={cn("flex flex-col items-center gap-2", isDesktopCollapsed && !isMobile ? "p-1" : "p-0")}>
-      <Avatar className={cn("h-12 w-12 border-2 border-sidebar-primary", isDesktopCollapsed && !isMobile ? "h-10 w-10" : "")}>
-        <AvatarImage src={user.photoURL || undefined} alt={userDisplayName} data-ai-hint="profile animal" />
-        <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground">
-          {userAvatarFallback}
-        </AvatarFallback>
-      </Avatar>
-      {!isDesktopCollapsed && !isMobile && (
-        <div className="text-center">
-          <p className="text-sm font-medium text-sidebar-foreground truncate max-w-[180px]" title={userDisplayName}>{userDisplayName}</p>
-          <p className="text-xs text-sidebar-foreground/70 truncate max-w-[180px]" title={user.email || ''}>{user.email}</p>
+    <div className={cn("flex flex-col items-center gap-2 w-full", (isDesktopCollapsed && !isMobile) ? "p-2" : "p-3")}>
+       <Separator className={cn("mb-2 bg-sidebar-border", (isDesktopCollapsed && !isMobile) && "hidden")} />
+      <div className={cn("flex items-center gap-3 w-full", (isDesktopCollapsed && !isMobile) && "flex-col justify-center")}>
+        <Avatar className={cn("h-10 w-10 border-2 border-sidebar-primary", (isDesktopCollapsed && !isMobile) && "h-9 w-9")}>
+          <AvatarImage src={user.photoURL || undefined} alt={userDisplayName} data-ai-hint="profile animal" />
+          <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground font-semibold">
+            {userAvatarFallback}
+          </AvatarFallback>
+        </Avatar>
+        <div className={cn("flex-1 min-w-0", (isDesktopCollapsed && !isMobile) && "hidden")}>
+          <p className="text-sm font-semibold text-sidebar-foreground truncate" title={userDisplayName}>{userDisplayName}</p>
+          {user.email && <p className="text-xs text-sidebar-foreground/70 truncate" title={user.email}>{user.email}</p>}
         </div>
-      )}
-      <Button 
-        variant="ghost" 
-        size={isDesktopCollapsed && !isMobile ? "icon" : "sm"}
-        className="w-full justify-center text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        onClick={handleSignOut}
-        disabled={isSigningOut}
-        title="Sign Out"
-      >
-        <LogOut className="h-5 w-5" />
-        {!isDesktopCollapsed && !isMobile && <span className="ml-2">{isSigningOut ? "Signing out..." : "Sign Out"}</span>}
-      </Button>
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <Button 
+                    variant="ghost" 
+                    size="icon"
+                    className={cn(
+                        "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        !(isDesktopCollapsed && !isMobile) && "ml-auto" // Only ml-auto if sidebar is expanded
+                    )}
+                    onClick={handleSignOut}
+                    disabled={isSigningOut}
+                >
+                    <LogOut className="h-5 w-5" />
+                </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" className="bg-sidebar-accent text-sidebar-accent-foreground border-sidebar-border">
+                <p>{isSigningOut ? "Signing out..." : "Sign Out"}</p>
+            </TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   );
 }
 
-
-function AdminMobileHeader() {
+// New Admin specific header
+function AdminHeader() {
     const { isMobile } = useSidebar();
     const pathname = usePathname();
-    const currentNavItem = AdminNavItems.find(item => item.href === pathname);
+    const currentNavItem = AdminNavItems.find(item => pathname.startsWith(item.href));
     const pageTitle = currentNavItem?.label || "Admin";
 
-    if (!isMobile) return null;
-
     return (
-        <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-4 border-b bg-background px-4 sm:px-6 md:hidden">
-            <SidebarTrigger /> {/* Mobile trigger */}
-            <h1 className="text-lg font-semibold text-primary truncate">{pageTitle}</h1>
-            <div className="w-8"> {/* Spacer to balance trigger */} </div>
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
+            <div className="flex items-center gap-2">
+                {/* Use the SidebarTrigger imported from your ui/sidebar component */}
+                <ExternalSidebarTrigger className="text-primary"/>
+                <h1 className="text-lg font-semibold text-foreground hidden md:block">{pageTitle}</h1>
+            </div>
+            {/* Placeholder for other header items like search, notifications, user menu if needed */}
+            <div className="flex items-center gap-4">
+                {/* Example: <Button variant="outline" size="icon"><Settings className="h-5 w-5"/></Button> */}
+            </div>
         </header>
     );
 }
@@ -163,33 +177,43 @@ export default function AdminLayout({
 
   React.useEffect(() => {
     if (!authLoading && !user) {
-      router.replace('/auth');
+      router.replace('/auth?redirect=/admin'); // Redirect to auth if not logged in, with callback
     }
   }, [user, authLoading, router]);
 
-  if (authLoading || !user) {
+  if (authLoading || (!user && typeof window !== 'undefined' && window.location.pathname.startsWith('/admin'))) {
      return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-background">
-            {/* You can add a spinner or loading animation here */}
-            <p className="text-lg text-muted-foreground">Loading admin area...</p>
+            <Logo className="h-12 w-auto mb-4"/>
+            <p className="text-lg text-muted-foreground flex items-center gap-2">
+                <LayoutDashboard className="animate-spin h-5 w-5" />
+                Loading admin area...
+            </p>
         </div>
     );
   }
+  // If still no user after loading and already on an admin path, this might flicker before redirect.
+  // The redirect in useEffect should handle it.
+  if (!user) return null; 
+
 
   return (
-    <SidebarProvider defaultOpen={true}>
-      <div className="flex min-h-screen bg-background">
-        <Sidebar collapsible="icon">
-          <AdminSidebarContent />
+    <SidebarProvider defaultOpen={true}> {/* Ensure defaultOpen is true for desktop */}
+      <div className="flex min-h-screen bg-muted/40"> {/* Slightly off-white background for content area */}
+        <Sidebar>
+          <AdminSidebarInternalContent />
         </Sidebar>
         
-        <SidebarInset>
-            <AdminMobileHeader />
-            <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
-             {children}
-            </main>
-        </SidebarInset>
+        <div className="flex flex-col flex-1"> {/* Wrapper for header and content inset */}
+            <AdminHeader />
+            <SidebarInset> {/* SidebarInset now just handles margin based on sidebar state */}
+                <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
+                {children}
+                </main>
+            </SidebarInset>
+        </div>
       </div>
     </SidebarProvider>
   );
 }
+    

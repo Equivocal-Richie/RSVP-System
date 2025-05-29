@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,103 +9,100 @@ body {
 
 @layer base {
   :root {
-    --background: 0 0% 93%; /* #EEEEEE - Light Gray */
-    --foreground: 0 0% 20%; /* #333333 - Dark Gray for body text */
+    --background: 240 5% 96%; /* Almost white, very light cool gray */
+    --foreground: 240 6% 10%; /* Very dark blue/gray for text */
 
     --card: 0 0% 100%; /* White */
-    --card-foreground: 0 0% 13%; /* Darker Gray for card text */
+    --card-foreground: 240 6% 10%; 
 
-    --popover: 0 0% 100%; /* White */
-    --popover-foreground: 0 0% 13%; /* Darker Gray for popover text */
+    --popover: 0 0% 100%; 
+    --popover-foreground: 240 6% 10%;
 
     --primary: 231 48% 48%; /* #3F51B5 - Deep Blue */
-    --primary-foreground: 0 0% 100%; /* White text on primary */
+    --primary-foreground: 0 0% 100%; 
 
-    --secondary: 231 40% 90%; /* Lighter shade of primary */
-    --secondary-foreground: 231 48% 30%; /* Darker shade of primary for text on secondary */
+    --secondary: 231 40% 90%; 
+    --secondary-foreground: 231 48% 30%;
 
-    --muted: 0 0% 85%; /* Slightly darker gray for muted elements */
-    --muted-foreground: 0 0% 40%; /* Darker gray for muted text */
+    --muted: 240 5% 90%; /* Light gray for muted elements */
+    --muted-foreground: 240 5% 45%; /* Darker gray for muted text */
 
     --accent: 174 100% 29%; /* #009688 - Teal */
-    --accent-foreground: 0 0% 100%; /* White text on accent */
+    --accent-foreground: 0 0% 100%; 
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%; /* Light text on destructive */
+    --destructive: 0 72% 51%; /* Slightly less saturated red */
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 87%; /* Slightly lighter border for better subtle separation */
-    --input: 0 0% 96%; /* Lighter input background for better contrast */
-    --ring: 231 48% 48%; /* Ring color - Deep Blue (Primary) */
+    --border: 240 5% 88%; /* Subtle border */
+    --input: 240 5% 93%; /* Slightly off-white input background */
+    --ring: 231 48% 48%; 
 
     --radius: 0.5rem;
 
-    /* Chart colors (can be adjusted) */
-    --chart-1: 231 48% 48%; /* Primary */
-    --chart-2: 174 100% 29%; /* Accent */
-    --chart-3: 231 40% 65%; /* Lighter Primary */
-    --chart-4: 174 80% 45%; /* Lighter Accent */
-    --chart-5: 0 0% 50%; /* Neutral Gray */
+    --chart-1: 231 48% 48%; 
+    --chart-2: 174 100% 29%;
+    --chart-3: 231 40% 65%;
+    --chart-4: 174 80% 45%;
+    --chart-5: 240 5% 50%; /* Neutral Gray */
 
-    /* Sidebar "Futuristic" Theme - Dark & Contrasted */
-    --sidebar-background: 240 10% 12%; /* Very dark blue/charcoal, almost black */
-    --sidebar-foreground: 240 5% 88%; /* Off-white/light grey for text, high contrast */
+    /* Admin Sidebar - Modern & Clean (inspired by Sparic, but with your blue) */
+    --sidebar-background: 240 6% 10%; /* Very dark (almost black) for high contrast */
+    --sidebar-foreground: 240 5% 85%; /* Light gray/off-white text */
     
-    --sidebar-primary: 180 70% 45%; /* Vibrant cyan/teal for active items/icons */
-    --sidebar-primary-foreground: 0 0% 100%; /* White text on active items for clarity */
+    --sidebar-primary: 231 55% 55%; /* Brighter version of your primary blue for active items */
+    --sidebar-primary-foreground: 0 0% 100%; /* White text on active items */
     
-    --sidebar-accent: 240 10% 20%; /* Slightly lighter dark for hover backgrounds */
-    --sidebar-accent-foreground: 180 70% 65%; /* Brighter cyan/teal for text on hover */
+    --sidebar-accent: 240 6% 15%; /* Slightly lighter dark for hover backgrounds */
+    --sidebar-accent-foreground: 231 50% 70%; /* Lighter blue for text on hover */
     
-    --sidebar-border: 240 10% 18%; /* Subtle darker border within sidebar */
-    --sidebar-ring: 180 70% 50%;  /* Ring color for focus, matches sidebar primary */
+    --sidebar-border: 240 6% 18%; /* Subtle darker border within sidebar */
+    --sidebar-ring: 231 55% 60%;  /* Ring color for focus */
   }
 
   .dark {
-    --background: 240 10% 8%; /* Very dark main background for dark mode */
-    --foreground: 0 0% 88%; /* Light Gray for body text */
+    --background: 240 6% 10%; /* Very dark main background */
+    --foreground: 240 5% 90%; /* Light gray/off-white text */
 
-    --card: 240 10% 15%; /* Darker card background */
-    --card-foreground: 0 0% 88%;
+    --card: 240 6% 14%; /* Darker card background */
+    --card-foreground: 240 5% 90%;
 
-    --popover: 240 10% 14%; /* Darker popover */
-    --popover-foreground: 0 0% 88%;
+    --popover: 240 6% 12%; /* Darker popover */
+    --popover-foreground: 240 5% 90%;
 
-    --primary: 180 65% 55%; /* Brighter Cyan/Teal for primary elements in dark mode */
-    --primary-foreground: 240 10% 8%; /* Dark text on bright primary */
+    --primary: 231 55% 60%; /* Brighter Primary for dark mode */
+    --primary-foreground: 0 0% 100%; 
 
-    --secondary: 240 10% 20%; 
-    --secondary-foreground: 0 0% 85%;
+    --secondary: 240 6% 20%; 
+    --secondary-foreground: 240 5% 80%;
 
-    --muted: 240 10% 25%;
-    --muted-foreground: 0 0% 65%;
+    --muted: 240 6% 22%;
+    --muted-foreground: 240 5% 60%;
 
-    --accent: 174 65% 60%; /* Brighter Teal for accent in dark mode */
-    --accent-foreground: 0 0% 5%; /* Very dark text on bright accent */
+    --accent: 174 80% 45%; /* Brighter Teal for accent */
+    --accent-foreground: 0 0% 100%; 
 
-    --destructive: 0 70% 45%; /* Slightly deeper red for dark mode */
-    --destructive-foreground: 0 0% 95%;
+    --destructive: 0 65% 55%; 
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 240 10% 20%; /* Darker border */
-    --input: 240 10% 18%; /* Darker input */
-    --ring: 180 65% 55%; /* Primary accent for ring in dark mode */
+    --border: 240 6% 20%;
+    --input: 240 6% 18%;
+    --ring: 231 55% 60%; 
     
-    /* Chart colors for dark mode (can be same or adjusted for contrast) */
-    --chart-1: 0 0% 88%;
-    --chart-2: 174 65% 60%;
-    --chart-3: 0 0% 70%;
-    --chart-4: 174 55% 45%;
-    --chart-5: 0 0% 55%;
+    --chart-1: 231 55% 60%;
+    --chart-2: 174 80% 45%;
+    --chart-3: 231 50% 70%;
+    --chart-4: 174 70% 55%;
+    --chart-5: 240 5% 60%;
 
-    /* Sidebar "Futuristic" Theme - Dark Mode (can be same as light if sidebar is always dark, or slightly adjusted) */
-    /* Forcing sidebar to look consistent, you might not need to redefine these if sidebar is always dark-themed */
-    --sidebar-background: 240 10% 12%; 
+    /* Sidebar in dark mode - can be the same as light mode's sidebar if it's always dark-themed */
+    --sidebar-background: 240 6% 8%; /* Even darker for distinct sidebar in dark mode */
     --sidebar-foreground: 240 5% 88%; 
-    --sidebar-primary: 180 70% 45%; 
+    --sidebar-primary: 231 60% 65%; 
     --sidebar-primary-foreground: 0 0% 100%; 
-    --sidebar-accent: 240 10% 20%; 
-    --sidebar-accent-foreground: 180 70% 65%; 
-    --sidebar-border: 240 10% 18%; 
-    --sidebar-ring: 180 70% 50%; 
+    --sidebar-accent: 240 6% 13%; 
+    --sidebar-accent-foreground: 231 55% 75%; 
+    --sidebar-border: 240 6% 15%; 
+    --sidebar-ring: 231 60% 70%; 
   }
 }
 
@@ -113,7 +111,30 @@ body {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
-    font-family: var(--font-geist-sans), sans-serif;
+    @apply bg-background text-foreground antialiased;
+  }
+  /* Ensure scrollbar track matches background for a cleaner look */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-muted/30;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted/80;
   }
 }
+
+/* Animation for sidebar width */
+@layer utilities {
+  .transition-width {
+    transition-property: width;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 300ms;
+  }
+}
+    

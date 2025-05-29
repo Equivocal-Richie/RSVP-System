@@ -1,48 +1,30 @@
+
 "use client"; 
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Logo from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
-import { Home, LogIn, Loader2, UserCog } from 'lucide-react'; // Changed UserPlus to UserCog for Admin
+import { Home, LogIn, Loader2, UserCog, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useSidebar } from '@/components/ui/sidebar'; // Import useSidebar
+// Removed useSidebar import as admin sidebar trigger is handled in AdminHeader
 
 const Header = () => {
   const { user, loading: authLoading } = useAuth();
   const pathname = usePathname();
-  // Conditionally get sidebar context only if SidebarProvider is an ancestor
-  // This check is to prevent errors if Header is used outside SidebarProvider context
-  let sidebarContext = null;
-  try {
-    sidebarContext = useSidebar();
-  } catch (e) {
-    // console.warn("useSidebar used outside of SidebarProvider in Header, this is expected for non-admin routes.");
-  }
-  const { isMobile, toggleMobileSidebar } = sidebarContext || { isMobile: false, toggleMobileSidebar: () => {} };
-
-
+  
   const isAdminRoute = pathname.startsWith('/admin');
 
-  // Show a specific trigger for admin routes on mobile, if sidebar is not handling it
-  const showAdminMobileTriggerInHeader = isAdminRoute && isMobile;
-
+  // If on an admin route, this main header will not be rendered.
+  // The admin section has its own AdminHeader within AdminLayout.
+  if (isAdminRoute) {
+    return null; 
+  }
 
   return (
     <header className="bg-card border-b border-border shadow-sm sticky top-0 z-50 h-16">
       <div className="container mx-auto px-4 h-full flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {showAdminMobileTriggerInHeader && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleMobileSidebar}
-              className="md:hidden text-foreground" // Show only on mobile for admin
-              aria-label="Open admin menu"
-            >
-              <PanelLeft className="h-5 w-5" />
-            </Button>
-          )}
           <Link href="/" aria-label="RSVP Now Home">
             <Logo />
           </Link>
@@ -71,15 +53,14 @@ const Header = () => {
             </Button>
           )}
           
-          {!authLoading && user && !isAdminRoute && ( // If logged in but NOT on an admin route
+          {!authLoading && user && ( // If logged in, always show Admin Dashboard link (if not on admin page itself)
             <Button variant="outline" asChild>
               <Link href="/admin" className="flex items-center space-x-1 sm:space-x-2">
-                <UserCog className="h-4 w-4" />
-                <span className="hidden sm:inline">Admin</span>
+                <LayoutDashboard className="h-4 w-4" />
+                <span className="hidden sm:inline">Admin Dashboard</span>
               </Link>
             </Button>
           )}
-          {/* Sign Out button is now in the admin sidebar's profile section */}
         </nav>
       </div>
     </header>
@@ -87,3 +68,4 @@ const Header = () => {
 };
 
 export default Header;
+    
