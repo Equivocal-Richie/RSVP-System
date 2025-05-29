@@ -9,8 +9,7 @@ import { PanelLeft, X } from "lucide-react"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
-import { Sheet, SheetContent, SheetClose } from "@/components/ui/sheet" // Removed RadixSheetTrigger import here as it's not needed by SidebarTrigger
+import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet" // Added SheetTitle
 import {
   Tooltip,
   TooltipContent,
@@ -22,7 +21,7 @@ const SIDEBAR_COOKIE_NAME = "sidebar_desktop_state_v2";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 const SIDEBAR_WIDTH_EXPANDED = "16rem"; 
-const SIDEBAR_WIDTH_COLLAPSED = "3.75rem"; // Approx 60px, suitable for icons
+const SIDEBAR_WIDTH_COLLAPSED = "3.75rem"; 
 const SIDEBAR_WIDTH_MOBILE = "18rem"; 
 
 
@@ -33,7 +32,7 @@ interface SidebarContextProps {
   setMobileOpen: (open: boolean) => void;
   isMobile: boolean;
   toggleDesktopSidebar: () => void;
-  toggleMobileSidebar: () => void;
+  // toggleMobileSidebar: () => void; // Removed as setMobileOpen is sufficient
   isDesktopCollapsed: boolean;
 }
 
@@ -73,13 +72,15 @@ export const SidebarProvider: React.FC<React.PropsWithChildren<{ defaultOpen?: b
   }, []);
 
   const toggleDesktopSidebar = () => setDesktopOpen(!isDesktopOpenState)
-  const toggleMobileSidebar = () => setMobileOpen(!isMobileOpen)
+  // const toggleMobileSidebar = () => setMobileOpen(!isMobileOpen) // Replaced by setMobileOpen
 
   React.useEffect(() => {
-    if (isMobile) {
-      setMobileOpen(false); 
+    if (isMobile && isDesktopOpenState) { // If switching to mobile and desktop was open, ensure mobile starts closed
+        // setMobileOpen(false); // Let sheet control its open state on mount
+    } else if (!isMobile && isMobileOpen) { // If switching to desktop and mobile was open, close mobile
+        setMobileOpen(false);
     }
-  }, [isMobile]);
+  }, [isMobile, isMobileOpen, isDesktopOpenState]);
 
 
   const contextValue = React.useMemo(() => ({
@@ -89,9 +90,9 @@ export const SidebarProvider: React.FC<React.PropsWithChildren<{ defaultOpen?: b
     setMobileOpen,
     isMobile,
     toggleDesktopSidebar,
-    toggleMobileSidebar,
+    // toggleMobileSidebar,
     isDesktopCollapsed: !isDesktopOpenState && !isMobile, 
-  }), [isDesktopOpenState, isMobileOpen, isMobile, setDesktopOpen, toggleDesktopSidebar, toggleMobileSidebar]);
+  }), [isDesktopOpenState, isMobileOpen, isMobile, setDesktopOpen, toggleDesktopSidebar]);
 
   return (
     <SidebarContext.Provider value={contextValue}>
@@ -118,9 +119,10 @@ export const Sidebar = React.forwardRef<
             className
           )}
           style={{ '--sidebar-width-mobile': SIDEBAR_WIDTH_MOBILE } as React.CSSProperties}
-          showCloseButton={false} 
-          {...props} 
+          showCloseButton={false} // Using a custom close button in SidebarHeader for better placement control
         >
+          {/* ADDED SheetTitle for accessibility */}
+          <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
           {children}
         </SheetContent>
       </Sheet>
@@ -132,7 +134,7 @@ export const Sidebar = React.forwardRef<
       ref={ref}
       data-state={isDesktopOpen ? "expanded" : "collapsed"}
       className={cn(
-        "hidden md:flex flex-col fixed top-0 left-0 h-full z-40 bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-300 ease-in-out overflow-y-auto", 
+        "hidden md:flex flex-col fixed top-0 left-0 h-full z-40 bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-300 ease-in-out overflow-y-auto overflow-x-hidden", 
         isDesktopOpen ? "w-[var(--sidebar-width-expanded)]" : "w-[var(--sidebar-width-collapsed)]",
         className
       )}
@@ -162,22 +164,24 @@ export const SidebarTrigger = React.forwardRef<
         variant="ghost"
         size="icon"
         className={cn("text-foreground hover:bg-accent/10 md:hidden", className)} 
-        onClick={() => setMobileOpen(!isMobileOpen)}
+        onClick={() => setMobileOpen(!isMobileOpen)} // Directly toggle mobile sheet
         aria-label={isMobileOpen ? "Close menu" : "Open menu"}
         {...props}
       >
+        {/* Icon changes based on mobile sheet state */}
         {children || (isMobileOpen ? <X className="h-5 w-5" /> : <PanelLeft className="h-5 w-5" />)}
       </Button>
     );
   }
 
+  // Desktop Trigger
   const label = isDesktopOpen ? "Collapse menu" : "Expand menu";
   return (
     <Button
       ref={ref}
       variant="ghost"
       size="icon"
-      className={cn("text-foreground hover:bg-accent/10 hidden md:flex", className)} 
+      className={cn("text-sidebar-foreground hover:bg-sidebar-accent hidden md:flex", className)} 
       onClick={toggleDesktopSidebar}
       aria-label={label}
       {...props}
@@ -193,21 +197,29 @@ export const SidebarHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, children, ...props }, ref) => {
-  const { isMobile, toggleMobileSidebar, isMobileOpen } = useSidebar();
+  const { isMobile, isMobileOpen, setMobileOpen } = useSidebar();
   return (
     <div
       ref={ref}
       className={cn(
-        "h-16 flex items-center justify-between border-b border-sidebar-border shrink-0",
-        isMobile ? "px-4" : "px-3", 
+        "flex items-center justify-between border-b border-sidebar-border shrink-0",
+        isMobile ? "px-4 h-16" : "px-3 h-16", 
         className)} 
       {...props}
     >
-      {children}
+      {children} {/* This is where Logo (and Desktop Trigger if placed here) goes */}
       {isMobile && isMobileOpen && ( 
-         <Button variant="ghost" size="icon" onClick={toggleMobileSidebar} aria-label="Close menu" className="text-sidebar-foreground hover:bg-sidebar-accent">
+         <SheetClose asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setMobileOpen(false)} // Ensure state is updated explicitly
+            aria-label="Close menu"
+            className="text-sidebar-foreground hover:bg-sidebar-accent"
+          >
             <X className="h-5 w-5"/>
-         </Button>
+          </Button>
+         </SheetClose>
       )}
     </div>
   )
@@ -334,7 +346,7 @@ export const SidebarInset = React.forwardRef<
     <div
       ref={ref}
       className={cn(
-        "flex flex-col flex-1 transition-all duration-300 ease-in-out overflow-hidden", 
+        "flex flex-col flex-1 transition-all duration-300 ease-in-out", 
         !isMobile && 
           (isDesktopOpen
             ? "md:ml-[var(--sidebar-width-expanded)]"
@@ -350,3 +362,5 @@ export const SidebarInset = React.forwardRef<
   );
 });
 SidebarInset.displayName = "SidebarInset";
+
+    
