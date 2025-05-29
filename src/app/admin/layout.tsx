@@ -1,5 +1,4 @@
-
-"use client"; // AdminLayout needs to be client for useAuth and sidebar interactions
+"use client";
 
 import React from "react";
 import {
@@ -10,13 +9,14 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarFooter,
   SidebarInset,
   SidebarTrigger,
-  // SidebarFooter, // Assuming SidebarFooter might be a conceptual part of SidebarContent
+  useSidebar, // Import useSidebar to allow child components to access context
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
-import { LayoutDashboard, BarChart3, Users, LogOut, UserCircle, Settings } from "lucide-react";
+import { LayoutDashboard, BarChart3, Users, LogOut, Settings, PanelLeft, Image as ImageIcon } from "lucide-react"; // Added ImageIcon
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/icons/Logo";
 import { Separator } from "@/components/ui/separator";
@@ -27,17 +27,64 @@ import { auth } from '@/lib/firebaseClient';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
 
+const AdminNavItems = [
+  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/analytics", label: "Event Analytics", icon: BarChart3 },
+  { href: "/admin/guests", label: "Past Guests", icon: Users },
+  // { href: "/admin/settings", label: "Settings", icon: Settings }, // Example
+];
 
-export default function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const { user, loading: authLoading } = useAuth();
+function AdminSidebarContent() {
+  const { isDesktopCollapsed, isMobile, setMobileOpen } = useSidebar();
   const pathname = usePathname();
-  const router = useRouter();
+
+  const handleLinkClick = () => {
+    if (isMobile) {
+      setMobileOpen(false); // Close mobile sidebar on link click
+    }
+  };
+
+  return (
+    <>
+      <SidebarHeader>
+        <Link href="/admin" className={cn("transition-opacity duration-300", isDesktopCollapsed && !isMobile ? "opacity-0 w-0 h-0" : "opacity-100")}>
+          <Logo />
+        </Link>
+        {/* SidebarTrigger for desktop collapsing. Mobile trigger is in AdminMobileHeader */}
+        {!isMobile && <SidebarTrigger />}
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarMenu>
+          {AdminNavItems.map((item) => (
+            <SidebarMenuItem key={item.href}>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname === item.href}
+                tooltip={item.label}
+                onClick={handleLinkClick}
+              >
+                <Link href={item.href} className="flex items-center">
+                  <item.icon />
+                  {!isMobile && isDesktopCollapsed ? null : <span className="ml-3 truncate">{item.label}</span>}
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarContent>
+      <SidebarFooter>
+        <UserProfileSection />
+      </SidebarFooter>
+    </>
+  );
+}
+
+function UserProfileSection() {
+  const { user } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
   const [isSigningOut, setIsSigningOut] = React.useState(false);
+  const { isDesktopCollapsed, isMobile } = useSidebar();
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
@@ -53,109 +100,92 @@ export default function AdminLayout({
     }
   };
 
-
-  if (authLoading) {
-     return (
-        <div className="flex flex-col items-center justify-center min-h-screen">
-            <p className="text-lg text-muted-foreground">Loading user session...</p>
-        </div>
-    );
-  }
-
-  if (!user) {
-    // This check is important. If using middleware for route protection,
-    // this might primarily handle the UI flicker before redirect.
-    // For direct access attempts, middleware is more robust.
-    router.replace('/auth'); // Redirect to login if not authenticated
-    return (
-        <div className="flex flex-col items-center justify-center min-h-screen">
-            <p className="text-lg text-muted-foreground">Redirecting to login...</p>
-        </div>
-    );
-  }
-
-  const sidebarNavItems = [
-    { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/admin/analytics", label: "Event Analytics", icon: BarChart3 },
-    { href: "/admin/guests", label: "Past Guests", icon: Users },
-    // { href: "/admin/settings", label: "Settings", icon: Settings }, // Example for future
-  ];
+  if (!user) return null;
 
   const userDisplayName = user.displayName || user.email || "Event Organizer";
-  const userAvatarFallback = (user.displayName || user.email || "U").substring(0, 2).toUpperCase();
+  const userAvatarFallback = (user.displayName || user.email || "U")?.[0]?.toUpperCase() || "U";
 
   return (
-    <SidebarProvider defaultOpen>
-      <div className="flex min-h-screen bg-background">
-        <Sidebar collapsible="icon" variant="sidebar" className="border-r border-sidebar-border flex flex-col">
-          <SidebarHeader className="p-4 flex items-center justify-between sticky top-0 bg-sidebar z-10">
-             <Link href="/admin" className="group-data-[collapsible=icon]:hidden">
-                <Logo />
-             </Link>
-             {/* SidebarTrigger for desktop collapsing / mobile opening */}
-             <div className="group-data-[collapsible=icon]:mx-auto"> {/* Center trigger in icon mode */}
-                <SidebarTrigger />
-             </div>
-          </SidebarHeader>
-          <Separator className="bg-sidebar-border group-data-[collapsible=icon]:hidden" />
-          
-          <SidebarContent className="flex-grow p-2 overflow-y-auto">
-            <SidebarMenu>
-              {sidebarNavItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname === item.href}
-                    tooltip={item.label}
-                  >
-                    <Link href={item.href}>
-                      <item.icon />
-                      <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarContent>
+    <div className={cn("flex flex-col items-center gap-2", isDesktopCollapsed && !isMobile ? "p-1" : "p-0")}>
+      <Avatar className={cn("h-12 w-12 border-2 border-sidebar-primary", isDesktopCollapsed && !isMobile ? "h-10 w-10" : "")}>
+        <AvatarImage src={user.photoURL || undefined} alt={userDisplayName} data-ai-hint="profile animal" />
+        <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground">
+          {userAvatarFallback}
+        </AvatarFallback>
+      </Avatar>
+      {!isDesktopCollapsed && !isMobile && (
+        <div className="text-center">
+          <p className="text-sm font-medium text-sidebar-foreground truncate max-w-[180px]" title={userDisplayName}>{userDisplayName}</p>
+          <p className="text-xs text-sidebar-foreground/70 truncate max-w-[180px]" title={user.email || ''}>{user.email}</p>
+        </div>
+      )}
+      <Button 
+        variant="ghost" 
+        size={isDesktopCollapsed && !isMobile ? "icon" : "sm"}
+        className="w-full justify-center text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        onClick={handleSignOut}
+        disabled={isSigningOut}
+        title="Sign Out"
+      >
+        <LogOut className="h-5 w-5" />
+        {!isDesktopCollapsed && !isMobile && <span className="ml-2">{isSigningOut ? "Signing out..." : "Sign Out"}</span>}
+      </Button>
+    </div>
+  );
+}
 
-          <Separator className="bg-sidebar-border group-data-[collapsible=icon]:hidden" />
-          <div className="p-4 mt-auto sticky bottom-0 bg-sidebar z-10">
-            <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
-              <Avatar className="h-10 w-10 border-2 border-sidebar-primary">
-                <AvatarImage src={user.photoURL || `https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt={userDisplayName} data-ai-hint="profile animal" />
-                <AvatarFallback>{userAvatarFallback}</AvatarFallback>
-              </Avatar>
-              <div className="group-data-[collapsible=icon]:hidden flex-grow">
-                <p className="text-sm font-medium text-sidebar-foreground truncate" title={userDisplayName}>{userDisplayName}</p>
-                <p className="text-xs text-sidebar-foreground/70 truncate" title={user.email || ''}>{user.email}</p>
-              </div>
-            </div>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="w-full justify-start mt-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-10 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center"
-              onClick={handleSignOut}
-              disabled={isSigningOut}
-              title="Sign Out"
-            >
-              <LogOut className="h-5 w-5" />
-              <span className="ml-2 group-data-[collapsible=icon]:hidden">{isSigningOut ? "Signing out..." : "Sign Out"}</span>
-            </Button>
-          </div>
+
+function AdminMobileHeader() {
+    const { isMobile } = useSidebar();
+    const pathname = usePathname();
+    const currentNavItem = AdminNavItems.find(item => item.href === pathname);
+    const pageTitle = currentNavItem?.label || "Admin";
+
+    if (!isMobile) return null;
+
+    return (
+        <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-4 border-b bg-background px-4 sm:px-6 md:hidden">
+            <SidebarTrigger /> {/* Mobile trigger */}
+            <h1 className="text-lg font-semibold text-primary truncate">{pageTitle}</h1>
+            <div className="w-8"> {/* Spacer to balance trigger */} </div>
+        </header>
+    );
+}
+
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  React.useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace('/auth');
+    }
+  }, [user, authLoading, router]);
+
+  if (authLoading || !user) {
+     return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-background">
+            {/* You can add a spinner or loading animation here */}
+            <p className="text-lg text-muted-foreground">Loading admin area...</p>
+        </div>
+    );
+  }
+
+  return (
+    <SidebarProvider defaultOpen={true}>
+      <div className="flex min-h-screen bg-background">
+        <Sidebar collapsible="icon">
+          <AdminSidebarContent />
         </Sidebar>
         
-        <SidebarInset className="flex-1 flex flex-col">
-            {/* Mobile Header for Admin section, if sidebar trigger needs to be outside sidebar on mobile */}
-             <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 md:hidden sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6 py-2">
-                {/* On mobile, trigger is inside sidebar, this can be alternative placement or for title */}
-                <div className="md:hidden"> {/* Ensure trigger is shown on mobile if needed outside sidebar */}
-                    {/* <SidebarTrigger /> */}
-                </div>
-                <h1 className="text-lg font-semibold text-primary truncate">
-                  {sidebarNavItems.find(item => item.href === pathname)?.label || "Admin Area"}
-                </h1>
-            </header>
-            <main className="flex-1 p-4 md:p-6 overflow-auto">
+        <SidebarInset>
+            <AdminMobileHeader />
+            <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
              {children}
             </main>
         </SidebarInset>
