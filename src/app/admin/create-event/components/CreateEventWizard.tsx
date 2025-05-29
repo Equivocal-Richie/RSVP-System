@@ -15,7 +15,7 @@ import type { GuestInput, EventMood } from '@/types';
 import { createEventAndProcessInvitations } from '../actions'; 
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
+import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 import Link from 'next/link';
@@ -62,7 +62,7 @@ export type CreateEventFormData = z.infer<typeof wizardSchema>;
 const totalSteps = 4;
 
 export function CreateEventWizard() {
-  const { user, loading: authLoading } = useAuth(); // Get user from AuthContext
+  const { user, loading: authLoading } = useAuth(); 
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [createdEventId, setCreatedEventId] = useState<string | null>(null);
@@ -125,14 +125,14 @@ export function CreateEventWizard() {
     setIsLoading(true);
 
     const formData = new FormData();
-    formData.append("creatorId", user.uid); // Add creatorId
+    formData.append("creatorId", user.uid); 
     formData.append("name", data.name);
     formData.append("description", data.description);
     formData.append("date", data.date.toISOString());
     formData.append("time", data.time);
     formData.append("location", data.location);
     formData.append("mood", data.mood);
-    // Seat limit: send -1 if 'no', otherwise the number.
+    
     formData.append("seatLimit", data.hasSeatLimit === 'yes' ? (data.seatLimitNumber || 0).toString() : "-1");
     if (data.organizerEmail) {
       formData.append("organizerEmail", data.organizerEmail);
@@ -199,7 +199,8 @@ export function CreateEventWizard() {
 
   return (
     <FormProvider {...methods}>
-      <Card className="w-full max-w-3xl mx-auto shadow-2xl">
+      {/* Removed max-w-3xl and mx-auto from Card to allow it to expand */}
+      <Card className="w-full shadow-2xl">
         <CardHeader>
           <CardTitle className="text-2xl text-center text-primary">Create New Event (Step {currentStep} of {totalSteps})</CardTitle>
           <Progress value={progressValue} className="w-full mt-2 h-3" />
@@ -228,8 +229,8 @@ export function CreateEventWizard() {
                 {isLoading ? "Processing..." : "Create Event & Prepare Invitations"}
               </Button>
             )}
-             {currentStep === totalSteps && ( // Only show footer content if needed, e.g., a "Done" button or nothing for the last step
-                <div className="ml-auto"></div> // Ensures footer takes space but buttons can be selectively shown
+             {currentStep === totalSteps && ( 
+                <div className="ml-auto"></div> 
              )}
           </CardFooter>
         </form>
@@ -237,3 +238,5 @@ export function CreateEventWizard() {
     </FormProvider>
   );
 }
+
+    
