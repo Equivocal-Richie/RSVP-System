@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 
 const EVENTS_COLLECTION = 'events';
 const INVITATIONS_COLLECTION = 'invitations';
-const RESERVATIONS_COLLECTION = 'reservations';
+const RESERVATIONS_COLLECTION = 'reservations'; // Not fully utilized yet
 const EMAIL_LOGS_COLLECTION = 'emailLogs';
 
 // --- Event Functions ---
@@ -23,11 +23,13 @@ export async function getMostRecentEventIdForUser(userId: string): Promise<strin
       console.log(`No events found for user ${userId}.`);
       return null;
     }
+    // Firestore composite index missing for `getMostRecentEventIdForUser`. Please create it in the Firebase console.
+    // Required index: events collection, creatorId ASC, createdAt DESC
     return snapshot.docs[0].id;
   } catch (error: any) {
     console.error(`Error fetching most recent event ID for user ${userId}:`, error.message);
     if (error.code === 9 && error.message.includes("requires an index")) { 
-      console.error("Firestore composite index missing for `getMostRecentEventIdForUser`. Please create it in the Firebase console. Link: " + error.details);
+      console.error("Firestore composite index missing for `getMostRecentEventIdForUser` on `events` collection: `creatorId` (Ascending), `createdAt` (Descending). Please create it in the Firebase console. Link: " + error.details);
     }
     return null;
   }
@@ -38,18 +40,12 @@ export async function createEvent(eventDataInput: Omit<EventData, 'id' | 'confir
     const newEventRef = db.collection(EVENTS_COLLECTION).doc();
     
     const finalFirestoreWriteData = {
-      ...eventDataInput, // Includes creatorId
-      id: newEventRef.id,
-      name: eventDataInput.name,
-      description: eventDataInput.description,
+      ...eventDataInput, 
+      id: newEventRef.id, // Store doc ID within the document
       date: Timestamp.fromDate(new Date(eventDataInput.date)), 
-      time: eventDataInput.time,
-      location: eventDataInput.location,
-      mood: eventDataInput.mood,
-      seatLimit: eventDataInput.seatLimit,
-      eventImagePath: eventDataInput.eventImagePath || null,
-      organizerEmail: eventDataInput.organizerEmail || null,
-      _confirmedGuestsCount: 0,
+      eventImagePath: eventDataInput.eventImagePath || null, // Ensure null if not provided
+      organizerEmail: eventDataInput.organizerEmail || null, // Ensure null if not provided
+      _confirmedGuestsCount: 0, // Initialize confirmed count
       isPublic: eventDataInput.isPublic ?? false, 
       publicRsvpLink: eventDataInput.publicRsvpLink || null, 
       createdAt: FieldValue.serverTimestamp(),
@@ -115,7 +111,7 @@ export async function getEventById(id: string): Promise<EventData | null> {
       actualConfirmedCount = firestoreData._confirmedGuestsCount;
     } else if (typeof firestoreData.confirmedGuestsCount === 'number') { // Legacy check
       actualConfirmedCount = firestoreData.confirmedGuestsCount;
-      console.warn(`Event ${id} is using 'confirmedGuestsCount' field. Standard is '_confirmedGuestsCount'. Data read successfully, but consider migration.`);
+      console.warn(`Event ${id} is using legacy 'confirmedGuestsCount' field. Standard is '_confirmedGuestsCount'. Data read successfully, but consider migration.`);
     } else {
       console.warn(`_confirmedGuestsCount (and confirmedGuestsCount) not found for event ${id}, calculating from invitations.`);
       const invitationsSnap = await db.collection(INVITATIONS_COLLECTION)
@@ -175,11 +171,14 @@ export async function getPublicEvents(): Promise<EventData[]> {
       .orderBy('date', 'desc') 
       .get();
       
+    // Firestore composite index missing for `getPublicEvents`. Please create it in the Firebase console.
+    // Required index: events collection, isPublic ASC, date DESC
+
     return snapshot.docs.map(doc => convertTimestampsInObj({ id: doc.id, ...doc.data() } as EventData));
   } catch (error: any) {
     console.error("Error fetching public events:", error.message);
      if (error.code === 9 && error.message.includes("requires an index")) { 
-      console.error("Firestore composite index missing for `getPublicEvents`. Please create it in the Firebase console. Link: " + error.details);
+      console.error("Firestore composite index missing for `getPublicEvents` on `events` collection: `isPublic` (Ascending), `date` (Descending). Please create it in the Firebase console. Link: " + error.details);
     }
     return [];
   }
@@ -204,46 +203,42 @@ export async function createInvitations(eventId: string, guests: GuestInput[]): 
       uniqueToken,
       eventId,
       guestName: guest.name,
-      guestEmail: guest.email,
+      guestEmail: guest.email.toLowerCase(), // Normalize email
       status: 'pending',
       originalGuestName: guest.name,
-      originalGuestEmail: guest.email,
+      originalGuestEmail: guest.email.toLowerCase(), // Normalize email
       visited: false,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
     batch.set(invitationRef, newInvitation);
-    // For optimistic client update, create an object that matches InvitationData structure
+    
     createdInvitations.push({ 
         ...newInvitation, 
         id: invitationRef.id, 
-        createdAt: new Date().toISOString(), // Approximate for immediate use
-        updatedAt: new Date().toISOString(), // Approximate for immediate use
-        rsvpAt: null, // Not RSVP'd yet
-        visited: false, // Not visited yet
+        createdAt: new Date().toISOString(), 
+        updatedAt: new Date().toISOString(), 
+        rsvpAt: null, 
+        visited: false, 
     });
   }
 
   try {
     await batch.commit();
-    // After commit, re-fetch to get actual server timestamps for better accuracy client-side if needed
-    // Or trust the optimistic data with approximate timestamps for speed.
-    // For simplicity, returning the optimistic data. If precise timestamps are critical on client immediately, a re-fetch loop here is an option.
     const fetchedInvitations: InvitationData[] = [];
-    for (const guestData of createdInvitations) { // Use the createdInvitations array which has IDs
+    for (const guestData of createdInvitations) { 
          const docSnap = await db.collection(INVITATIONS_COLLECTION).doc(guestData.id).get();
          if (docSnap.exists) {
             fetchedInvitations.push(convertTimestampsInObj({ id: docSnap.id, ...docSnap.data() } as InvitationData));
          } else {
-            // This case should be rare if batch commit was successful
             console.warn(`Invitation ${guestData.id} not immediately found after batch commit. Using optimistic data.`);
-            fetchedInvitations.push(convertTimestampsInObj(guestData)); // Use the data we constructed
+            fetchedInvitations.push(convertTimestampsInObj(guestData)); 
          }
     }
     return fetchedInvitations; 
   } catch (error) {
     console.error("Error creating invitations in batch:", error);
-    throw error; // Re-throw to be caught by the calling server action
+    throw error; 
   }
 }
 
@@ -259,14 +254,13 @@ export async function getInvitationByToken(token: string): Promise<InvitationDat
     const docSnap = snapshot.docs[0];
     const invitation = { id: docSnap.id, ...docSnap.data() } as InvitationData; 
 
-    // Mark as visited if not already
     if (!invitation.visited) {
       await docSnap.ref.update({ 
         visited: true, 
         updatedAt: FieldValue.serverTimestamp() 
       });
-      invitation.visited = true; // Update the object we're returning too
-      invitation.updatedAt = new Date().toISOString(); // Approximate for immediate client use
+      invitation.visited = true; 
+      invitation.updatedAt = new Date().toISOString(); 
     }
     
     return convertTimestampsInObj(invitation);
@@ -292,7 +286,7 @@ export async function updateInvitationRsvp(
         throw new Error('Invitation not found.');
       }
       const invitationRef = invitationSnapshot.docs[0].ref;
-      const invitationDataFromDb = invitationSnapshot.docs[0].data() as Omit<InvitationData, 'id' | 'createdAt' | 'updatedAt' | 'rsvpAt'> & { createdAt: FirestoreTimestampType, updatedAt: FirestoreTimestampType, rsvpAt?: FirestoreTimestampType | null };
+      const invitationDataFromDb = { id: invitationRef.id, ...invitationSnapshot.docs[0].data()} as InvitationData;
 
 
       const eventRef = db.collection(EVENTS_COLLECTION).doc(invitationDataFromDb.eventId);
@@ -304,81 +298,80 @@ export async function updateInvitationRsvp(
       
       const oldStatus = invitationDataFromDb.status;
       let currentConfirmedGuestCount = eventDataFromDb._confirmedGuestsCount ?? 0;
+      let finalStatus: RsvpStatus = status;
 
-      // Check seat limit if confirming
+      // Logic for confirming or waitlisting
       if (status === 'confirmed' && oldStatus !== 'confirmed') {
         if (eventDataFromDb.seatLimit > 0 && currentConfirmedGuestCount >= eventDataFromDb.seatLimit) {
-          // TODO: Implement waitlisting logic instead of throwing error
-          // For now, if event is full, prevent confirmation.
-          throw new Error('Sorry, the event is currently full.');
+          finalStatus = 'waitlisted'; // Event is full, so waitlist
+          // Do not increment confirmed guest count for waitlisted
+        } else {
+          // Space available, confirm the guest
+          currentConfirmedGuestCount++;
         }
+      } else if (status === 'declining' && oldStatus === 'confirmed') {
+        currentConfirmedGuestCount = Math.max(0, currentConfirmedGuestCount - 1);
       }
       
-      // Update invitation details
-      const updateDataForInvitation: Partial<InvitationData> & { updatedAt: any, rsvpAt: any } = {
-        guestName: name, // Update name if it was changed in the form
-        guestEmail: email, // Update email if it was changed
-        status: status as RsvpStatus,
+      const updateDataForInvitation: Partial<Omit<InvitationData, 'id' | 'createdAt'>> & { updatedAt: any, rsvpAt: any } = {
+        guestName: name, 
+        guestEmail: email.toLowerCase(), 
+        status: finalStatus,
         rsvpAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       };
       transaction.update(invitationRef, updateDataForInvitation);
 
-      // Update event's confirmed guest count if status changed
-      let newConfirmedGuestCount = currentConfirmedGuestCount;
-      if (oldStatus !== status) {
-        if (status === 'confirmed') {
-          newConfirmedGuestCount++;
-        } else if (oldStatus === 'confirmed' && status === 'declining') {
-          newConfirmedGuestCount = Math.max(0, newConfirmedGuestCount - 1); // Ensure count doesn't go below 0
-        }
-        
-        // Only update if the count actually changed
-        if (newConfirmedGuestCount !== currentConfirmedGuestCount) {
-           transaction.update(eventRef, { _confirmedGuestsCount: newConfirmedGuestCount, updatedAt: FieldValue.serverTimestamp() });
-        }
+      // Only update event's confirmed count if it actually changed
+      if (currentConfirmedGuestCount !== (eventDataFromDb._confirmedGuestsCount ?? 0)) {
+         transaction.update(eventRef, { _confirmedGuestsCount: currentConfirmedGuestCount, updatedAt: FieldValue.serverTimestamp() });
       }
       
-      // Handle reservations (simplified: create/update on confirm, delete on decline)
       const reservationQuery = db.collection(RESERVATIONS_COLLECTION)
-                                 .where('invitationId', '==', invitationRef.id) // Assuming invitationRef.id is the Firestore doc ID
+                                 .where('invitationId', '==', invitationRef.id) 
                                  .limit(1);
       const reservationSnap = await transaction.get(reservationQuery);
 
-      if (status === 'confirmed') {
+      if (finalStatus === 'confirmed') {
         if (reservationSnap.empty) {
           const newReservationRef = db.collection(RESERVATIONS_COLLECTION).doc();
           transaction.set(newReservationRef, {
-            id: newReservationRef.id, // Store doc ID within document
-            invitationId: invitationRef.id, // Link to invitation document ID
+            id: newReservationRef.id,
+            invitationId: invitationRef.id, 
             eventId: invitationDataFromDb.eventId,
             reservationTime: FieldValue.serverTimestamp(),
-            status: 'confirmed', // or 'waitlisted' based on future logic
+            status: 'confirmed',
             createdAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
           });
         } else {
-           // If reservation exists, ensure its status is 'confirmed'
            transaction.update(reservationSnap.docs[0].ref, { status: 'confirmed', updatedAt: FieldValue.serverTimestamp() });
         }
-      } else if (status === 'declining') {
+      } else if (finalStatus === 'declining' || finalStatus === 'waitlisted') { // Remove reservation if declining or waitlisted (waitlist implies no confirmed seat yet)
         if (!reservationSnap.empty) {
-          // If declining, we can remove the reservation document
           transaction.delete(reservationSnap.docs[0].ref);
         }
       }
       
-      // Construct the InvitationData object to return
-      const returnedInvitation: InvitationData = {
-        ...(convertTimestampsInObj({ ...invitationDataFromDb, id: invitationRef.id })), // Convert existing timestamps
-        ...updateDataForInvitation, // Spread the updates
-        rsvpAt: new Date().toISOString(), // Approximate for immediate client use
-        updatedAt: new Date().toISOString(), // Approximate for immediate client use
-      };
+      const returnedInvitation: InvitationData = convertTimestampsInObj({
+        ...invitationDataFromDb,
+        ...updateDataForInvitation,
+        status: finalStatus, // ensure the final status is part of the returned object
+        rsvpAt: new Date().toISOString(), 
+        updatedAt: new Date().toISOString(), 
+      });
       return returnedInvitation;
     });
     
-    return { success: true, message: 'RSVP updated successfully.', invitation: result };
+    let message = 'RSVP updated successfully.';
+    if (result.status === 'waitlisted') {
+      message = 'The event is currently full. You have been added to the waitlist.';
+    } else if (result.status === 'confirmed') {
+      message = 'Thank you for confirming your attendance!';
+    } else if (result.status === 'declining') {
+      message = 'Your RSVP (declined) has been recorded. Thank you!';
+    }
+    return { success: true, message: message, invitation: result };
 
   } catch (error: any) {
     console.error('Error updating RSVP:', error);
@@ -402,10 +395,12 @@ export async function createPublicRsvpInvitation(
       }
       const eventData = eventSnap.data() as Omit<EventData, 'id' | 'confirmedGuestsCount' | 'createdAt' | 'updatedAt'| 'date' | 'creatorId'> & { _confirmedGuestsCount?: number, createdAt: FirestoreTimestampType, updatedAt: FirestoreTimestampType, date: FirestoreTimestampType, creatorId: string };
 
+      let rsvpStatus: RsvpStatus = 'confirmed';
+      let confirmedGuestsIncrement = 1;
 
       if (eventData.seatLimit > 0 && (eventData._confirmedGuestsCount ?? 0) >= eventData.seatLimit) {
-        // TODO: Future: Implement waitlisting for public RSVP
-        throw new Error('Sorry, the event is currently full.');
+        rsvpStatus = 'waitlisted';
+        confirmedGuestsIncrement = 0; // Don't increment confirmed count if waitlisted
       }
 
       const uniqueToken = randomUUID();
@@ -415,11 +410,11 @@ export async function createPublicRsvpInvitation(
         uniqueToken,
         eventId,
         guestName,
-        guestEmail,
-        status: 'confirmed' as RsvpStatus, // Public RSVPs are directly confirmed
-        visited: true, // They are visiting the link to RSVP
+        guestEmail: guestEmail.toLowerCase(), // Normalize email
+        status: rsvpStatus,
+        visited: true, 
         originalGuestName: guestName,
-        originalGuestEmail: guestEmail,
+        originalGuestEmail: guestEmail.toLowerCase(), // Normalize email
         rsvpAt: FieldValue.serverTimestamp(),
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -427,23 +422,31 @@ export async function createPublicRsvpInvitation(
       
       transaction.set(newInvitationRef, newInvitationDocData);
 
-      transaction.update(eventRef, {
-        _confirmedGuestsCount: FieldValue.increment(1),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      if (confirmedGuestsIncrement > 0) {
+        transaction.update(eventRef, {
+          _confirmedGuestsCount: FieldValue.increment(confirmedGuestsIncrement),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        // If waitlisted, just update the event's updatedAt timestamp
+        transaction.update(eventRef, { updatedAt: FieldValue.serverTimestamp() });
+      }
       
       const createdInvitationForClient: InvitationData = {
         id: newInvitationRef.id,
         ...newInvitationDocData,
-        status: 'confirmed', 
+        status: rsvpStatus, 
         rsvpAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
       return createdInvitationForClient;
     });
-
-    return { success: true, message: "RSVP successful! You're confirmed.", invitation: newInvitationData };
+    
+    const message = newInvitationData.status === 'confirmed' 
+      ? "RSVP successful! You're confirmed." 
+      : "Thank you! The event is currently full, but you've been added to the waitlist.";
+    return { success: true, message: message, invitation: newInvitationData };
 
   } catch (error: any) {
     console.error('Error creating public RSVP invitation:', error);
@@ -465,11 +468,14 @@ export async function getAllInvitationsForEvent(eventId: string): Promise<Invita
       .orderBy('createdAt', 'desc')
       .get();
       
+    // Firestore composite index missing for `getAllInvitationsForEvent`. Please create it in the Firebase console.
+    // Required index: invitations collection, eventId ASC, createdAt DESC
+
     return snapshot.docs.map(doc => convertTimestampsInObj({ id: doc.id, ...doc.data() } as InvitationData));
   } catch (error: any) {
     console.error(`Error fetching all invitations for event ${eventId}:`, error.message);
      if (error.code === 9 && error.message.includes("requires an index")) { 
-      console.error("Firestore composite index missing for `getAllInvitationsForEvent`. Please create it in the Firebase console. Link: " + error.details);
+      console.error("Firestore composite index missing for `getAllInvitationsForEvent` on `invitations` collection: `eventId` (Ascending), `createdAt` (Descending). Please create it in the Firebase console. Link: " + error.details);
     }
     return []; 
   }
@@ -483,25 +489,31 @@ export async function getEventStats(eventId: string): Promise<RsvpStats | null> 
         return null;
     }
 
-    const statuses: RsvpStatus[] = ['pending', 'declined', 'waitlisted']; 
-    const counts: { [key in RsvpStatus]?: number } = {};
-
-    const invitationsQuery = db.collection(INVITATIONS_COLLECTION).where('eventId', '==', eventId);
-    
-    for (const status of statuses) {
-        const countSnapshot = await invitationsQuery.where('status', '==', status).count().get();
-        counts[status] = countSnapshot.data().count;
-    }
+    // Get counts for pending, declined, and waitlisted directly from queries
+    const pendingSnapshot = await db.collection(INVITATIONS_COLLECTION)
+      .where('eventId', '==', eventId)
+      .where('status', '==', 'pending')
+      .count().get();
+    const declinedSnapshot = await db.collection(INVITATIONS_COLLECTION)
+      .where('eventId', '==', eventId)
+      .where('status', '==', 'declining')
+      .count().get();
+    const waitlistedSnapshot = await db.collection(INVITATIONS_COLLECTION)
+      .where('eventId', '==', eventId)
+      .where('status', '==', 'waitlisted')
+      .count().get();
     
     const totalSeats = event.seatLimit <= 0 ? Infinity : event.seatLimit;
+    // availableSeats is primarily relevant for new confirmations. 
+    // The confirmedGuestsCount from the event object is the source of truth for confirmed.
     const availableSeats = totalSeats === Infinity ? Infinity : Math.max(0, totalSeats - event.confirmedGuestsCount);
 
     return {
-      confirmed: event.confirmedGuestsCount, // This is now consistently from getEventById
-      pending: counts.pending ?? 0,
-      declined: counts.declined ?? 0,
-      waitlisted: counts.waitlisted ?? 0,
-      totalSeats: event.seatLimit <= 0 ? 0 : event.seatLimit, 
+      confirmed: event.confirmedGuestsCount,
+      pending: pendingSnapshot.data().count,
+      declined: declinedSnapshot.data().count,
+      waitlisted: waitlistedSnapshot.data().count,
+      totalSeats: event.seatLimit <= 0 ? 0 : event.seatLimit, // 0 represents unlimited for display simplicity
       availableSeats: availableSeats,
     };
   } catch (error) {
@@ -544,3 +556,10 @@ export async function getUserProfile(userId: string) {
   if (!doc.exists) return null;
   return convertTimestampsInObj({ id: doc.id, ...doc.data() });
 }
+
+// Firestore composite index creation reminders (add these as comments where queries are made if not auto-detected by Firebase Extensions)
+// 1. For getMostRecentEventIdForUser: Collection 'events', fields: creatorId (ASC), createdAt (DESC)
+// 2. For getPublicEvents: Collection 'events', fields: isPublic (ASC), date (DESC)
+// 3. For getAllInvitationsForEvent: Collection 'invitations', fields: eventId (ASC), createdAt (DESC)
+// 4. For getEventStats (individual status counts): Separate indexes for (eventId, status) are usually auto-created or single-field indexes suffice.
+//    If combining status with another orderBy, then a composite index might be needed.

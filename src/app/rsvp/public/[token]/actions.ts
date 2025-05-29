@@ -2,15 +2,15 @@
 "use server";
 
 import { z } from "zod";
-import { getEventById, createPublicRsvpInvitation } from "@/lib/db";
-import type { InvitationData } from "@/types"; // Ensure RsvpFormState is compatible or define a public specific one
-import type { RsvpFormState } from "../../[token]/actions"; // Using the same state type for now
+import { createPublicRsvpInvitation, getEventByPublicLinkToken, createEmailLog } from "@/lib/db";
+import type { RsvpFormState, InvitationData } from "@/types";
+import { generatePersonalizedInvitation, type GenerateInvitationTextInput, type GenerateInvitationTextOutput } from '@/ai/flows/generate-invitation-text-flow';
+import { sendInvitationEmail } from '@/lib/emailService'; // Re-using this, it can handle subject overrides
 
 const PublicRsvpFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   email: z.string().email({ message: "Please enter a valid email address." }),
-  eventId: z.string().min(1, { message: "Event ID is missing." }),
-  // Status is not explicitly submitted by user for public RSVP, it's implicitly 'confirmed'
+  eventId: z.string().min(1, { message: "Event ID is missing." }), // Public RSVP uses eventId as token
 });
 
 export async function submitPublicRsvp(
@@ -34,26 +34,80 @@ export async function submitPublicRsvp(
   const { eventId, name, email } = validatedFields.data;
 
   try {
-    // Event existence and seat limit checks will be handled by createPublicRsvpInvitation
+    const event = await getEventByPublicLinkToken(eventId);
+    if (!event) {
+      return { success: false, message: "Event not found or no longer available for public RSVP." };
+    }
+
+    // Call the database function to attempt creating the RSVP/invitation
     const result = await createPublicRsvpInvitation(eventId, name, email);
 
     if (result.success && result.invitation) {
-      return { 
-        success: true, 
-        message: result.message, // "RSVP successful! You're confirmed."
-        updatedInvitation: result.invitation // Pass the new invitation data
+      const newInvitation = result.invitation;
+      const emailType = newInvitation.status === 'confirmed' ? 'publicRsvpConfirmed' : 'publicRsvpWaitlisted';
+      const subject = newInvitation.status === 'confirmed' 
+        ? `Your RSVP is Confirmed for ${event.name}!`
+        : `You're on the Waitlist for ${event.name}`;
+
+      try {
+        const aiInputForEmail: GenerateInvitationTextInput = {
+          eventName: event.name,
+          eventDescription: event.description,
+          eventMood: event.mood,
+          guestName: newInvitation.guestName,
+          emailType: emailType,
+        };
+        const aiEmailContent = await generatePersonalizedInvitation(aiInputForEmail);
+        
+        // Re-using sendInvitationEmail for simplicity, providing a subject override
+        const emailResult = await sendInvitationEmail(
+            newInvitation, // Pass the new invitation data
+            event, 
+            aiEmailContent, 
+            subject // Subject override
+        );
+
+        await createEmailLog({
+          invitationId: newInvitation.id,
+          eventId: event.id,
+          emailAddress: newInvitation.guestEmail,
+          status: emailResult.success ? 'sent' : 'failed',
+          brevoMessageId: emailResult.messageId,
+          errorMessage: emailResult.error,
+          sentAt: emailResult.success ? new Date().toISOString() : null,
+        });
+        
+        if (!emailResult.success) {
+            console.warn(`Public RSVP for ${email} to event ${eventId} was successful, but email notification failed: ${emailResult.error}`);
+            // Decide if this should make the overall operation seem like a failure to the user or just a partial success
+        }
+
+      } catch (emailOrAiError: any) {
+        console.error(`Error sending ${emailType} email for public RSVP ${newInvitation.id}: ${emailOrAiError.message}`);
+        // Log error but don't necessarily fail the RSVP itself if it was stored
+      }
+      
+      return {
+        success: true,
+        message: newInvitation.status === 'confirmed'
+          ? "Thank you for RSVPing! Your spot is confirmed."
+          : "Thank you! The event is currently full, but you've been added to the waitlist. We'll notify you if a spot opens up.",
+        updatedInvitation: newInvitation, // Return the created/updated invitation data
       };
     } else {
-      return { 
-        success: false, 
-        message: result.message || "Failed to submit public RSVP. Please try again." 
-      };
+      // Handle specific error messages from createPublicRsvpInvitation if available
+      return { success: false, message: result.message || "Failed to process your RSVP. Please try again." };
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Public RSVP submission error:", error);
+    let errorMessage = "An unexpected error occurred. Please try again later.";
+    if (error.message.includes("full")) { // Crude check for full event error
+        errorMessage = "Sorry, the event is currently full and we couldn't add you to the waitlist at this time.";
+    }
     return {
       success: false,
-      message: "An unexpected error occurred during public RSVP. Please try again later.",
+      message: errorMessage,
+      errors: { _form: [errorMessage] }
     };
   }
 }

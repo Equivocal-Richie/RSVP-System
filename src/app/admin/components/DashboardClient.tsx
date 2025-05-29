@@ -15,7 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from "@/components/ui/progress";
 import type { TabulateRsvpStatsOutput } from '@/ai/flows/tabulate-rsvps';
 import { cn } from "@/lib/utils";
-import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
+import { useAuth } from '@/contexts/AuthContext';
 
 import {
   ChartContainer,
@@ -47,15 +47,15 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, descripti
 
 const rsvpChartConfig = {
   guests: { label: "Guests" }, 
-  Confirmed: { label: "Confirmed", color: "hsl(var(--chart-2))" },
-  Pending: { label: "Pending", color: "hsl(var(--chart-4))" },
-  Declined: { label: "Declined", color: "hsl(var(--destructive))" },
-  Waitlisted: { label: "Waitlisted", color: "hsl(var(--chart-5))" },
-  ToRemindAI: { label: "To Remind (AI)", color: "hsl(var(--chart-1))" },
+  Confirmed: { label: "Confirmed", color: "hsl(var(--chart-2))" }, // Greenish
+  Pending: { label: "Pending", color: "hsl(var(--chart-4))" }, // Bluish/Grayish
+  Declined: { label: "Declined", color: "hsl(var(--destructive))" }, // Reddish
+  Waitlisted: { label: "Waitlisted", color: "hsl(var(--chart-5))" }, // Orangish/Yellowish
+  ToRemindAI: { label: "To Remind (AI)", color: "hsl(var(--chart-1))" }, // Primary accent
 } satisfies RechartsPrimitive.ChartConfig;
 
 export default function DashboardClient() {
-  const { user, loading: authLoading } = useAuth(); // Get user from AuthContext
+  const { user, loading: authLoading } = useAuth();
   const [currentEvent, setCurrentEvent] = useState<EventData | null>(null);
   const [stats, setStats] = useState<RsvpStats | null>(null);
   const [invitations, setInvitations] = useState<InvitationData[]>([]);
@@ -68,16 +68,16 @@ export default function DashboardClient() {
 
   useEffect(() => {
     async function loadData() {
-      if (authLoading) return; // Don't fetch if auth state is still loading
+      if (authLoading) return; 
       if (!user) {
-        setIsLoading(false); // Not logged in, nothing to load for this user
+        setIsLoading(false); 
         setCurrentEvent(null);
         setStats(null);
         setInvitations([]);
         return;
       }
       setIsLoading(true);
-      const data = await fetchAdminDashboardData(user.uid); // Pass user.uid
+      const data = await fetchAdminDashboardData(user.uid);
       console.log('DashboardClient Invitations:', data.invitations);
       setCurrentEvent(data.event);
       setStats(data.stats);
@@ -87,7 +87,7 @@ export default function DashboardClient() {
       setIsLoading(false);
     }
     loadData();
-  }, [user, authLoading]); // Re-run if user or authLoading changes
+  }, [user, authLoading]);
 
   const rsvpChartData = useMemo(() => {
     const data: { category: string; guests: number; fill: string }[] = [];
@@ -98,6 +98,8 @@ export default function DashboardClient() {
       data.push({ category: "Waitlisted", guests: stats.waitlisted, fill: "var(--color-Waitlisted)" });
     }
     if (aiSummary && aiSummary.guestsToRemind.length > 0) {
+      // This assumes guestsToRemind is a separate category, not overlapping with pending.
+      // Adjust if AI summary provides a breakdown of pending guests who specifically need reminders.
       data.push({ category: "ToRemindAI", guests: aiSummary.guestsToRemind.length, fill: "var(--color-ToRemindAI)" });
     }
     return data;
@@ -174,21 +176,21 @@ export default function DashboardClient() {
 
   const confirmedPercentage = stats && stats.totalSeats > 0 ? (stats.confirmed / stats.totalSeats) * 100 : 0;
   
-  const getBadgeVariant = (status: RsvpStatus) => {
+  const getBadgeVariant = (status: RsvpStatus): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
-      case 'confirmed': return 'default';
+      case 'confirmed': return 'default'; // Will be styled by getBadgeClassName
       case 'declining': return 'destructive';
       case 'pending': return 'secondary';
-      case 'waitlisted': return 'outline';
+      case 'waitlisted': return 'outline'; // Will be styled by getBadgeClassName
       default: return 'secondary';
     }
   };
    const getBadgeClassName = (status: RsvpStatus) => {
     switch (status) {
-      case 'confirmed': return 'bg-green-500 hover:bg-green-600';
-      case 'declining': return ''; 
-      case 'pending': return 'bg-gray-400 hover:bg-gray-500';
-      case 'waitlisted': return 'bg-yellow-500 hover:bg-yellow-600 text-black';
+      case 'confirmed': return 'bg-green-500 hover:bg-green-600 text-white';
+      case 'declining': return ''; // Uses default destructive variant
+      case 'pending': return 'bg-gray-400 hover:bg-gray-500 text-white';
+      case 'waitlisted': return 'bg-yellow-500 hover:bg-yellow-600 text-black border-yellow-600';
       default: return '';
     }
   };
@@ -233,7 +235,7 @@ export default function DashboardClient() {
             </Button>
           </CardContent>
         </Card>
-      ) : currentEvent && stats ? ( // Ensure currentEvent and stats are not null before rendering dependent UI
+      ) : currentEvent && stats ? (
         <>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
             <StatCard title="Total Invited" value={invitations.length} icon={Users} description="Total number of guests invited." />
@@ -243,15 +245,17 @@ export default function DashboardClient() {
             <StatCard title="Waitlisted" value={stats.waitlisted} icon={Clock} description="Guests on the waitlist." className="bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700"/>
           </div>
 
-          {stats.totalSeats > 0 && (
+          {stats.totalSeats > 0 && ( // Show capacity only if there's a defined seat limit
             <Card className="shadow-lg">
               <CardHeader>
                 <CardTitle>Event Capacity</CardTitle>
-                <CardDescription>{`${stats.confirmed} / ${stats.totalSeats} seats filled`}</CardDescription>
+                <CardDescription>{`${stats.confirmed} / ${stats.totalSeats === Infinity ? 'Unlimited' : stats.totalSeats} seats filled`}</CardDescription>
               </CardHeader>
               <CardContent>
-                <Progress value={confirmedPercentage} className="w-full h-4" />
-                <p className="text-sm text-muted-foreground mt-2">{stats.availableSeats > 0 ? `${stats.availableSeats} seats remaining` : 'No seats remaining'}</p>
+                {stats.totalSeats !== Infinity && <Progress value={confirmedPercentage} className="w-full h-4" />}
+                <p className="text-sm text-muted-foreground mt-2">
+                    {stats.totalSeats === Infinity ? "This event has unlimited capacity." : (stats.availableSeats > 0 ? `${stats.availableSeats} seats remaining` : 'No seats remaining')}
+                </p>
               </CardContent>
             </Card>
           )}
@@ -267,8 +271,8 @@ export default function DashboardClient() {
                   <ChartContainer config={rsvpChartConfig} className="h-full w-full">
                     <RechartsPrimitive.BarChart
                       data={rsvpChartData}
-                      layout="horizontal" // Changed from vertical for better label readability with many categories
-                      margin={{ top: 5, right: 20, left: 5, bottom: 20 }} // Adjusted margins
+                      layout="horizontal" 
+                      margin={{ top: 5, right: 20, left: 5, bottom: 20 }} 
                     >
                       <RechartsPrimitive.CartesianGrid strokeDasharray="3 3" vertical={false}/>
                       <RechartsPrimitive.XAxis
@@ -277,7 +281,7 @@ export default function DashboardClient() {
                         axisLine={false}
                         tickMargin={8}
                         tickFormatter={(value) => rsvpChartConfig[value as keyof typeof rsvpChartConfig]?.label || value}
-                        interval={0} // Show all labels if space allows
+                        interval={0} 
                       />
                       <RechartsPrimitive.YAxis dataKey="guests" tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false}/>
                       <ChartTooltip
@@ -380,15 +384,16 @@ export default function DashboardClient() {
             </CardContent>
           </Card>
         </>
-      ) : null} {/* End of conditional rendering based on currentEvent and stats */}
+      ) : null}
       
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Developer Notes / TODOs</CardTitle></CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-1">
-            <p>• <strong>Firestore Setup:</strong> Ensure Firebase Admin SDK is configured. Composite indexes might be needed for queries (check server logs for links).</p>
-            <p>• <strong>Authentication:</strong> Admin dashboard now user-specific. Consider route protection for `/admin/*`.</p>
-            <p>• <strong>Public RSVP Form:</strong> Full submission logic for public RSVPs needs review/completion.</p>
-            <p>• <strong>Image Storage:</strong> Image upload is implemented; ensure Firebase Storage rules are set for public read if desired.</p>
+            <p>• <strong>Firestore Setup:</strong> Ensure Firebase Admin SDK is configured. Composite indexes might be needed (check server logs for links).</p>
+            <p>• <strong>Authentication:</strong> Admin dashboard is now user-specific. Google Sign-In still pending full client-side token handling.</p>
+            <p>• <strong>Public RSVP Form:</strong> Logic enhanced for public RSVPs, confirmation/waitlist emails are sent.</p>
+            <p>• <strong>Image Storage:</strong> Image upload implemented; ensure Firebase Storage rules are set.</p>
+            <p>• <strong>Waitlist Management:</strong> Admin tools to accept/decline from waitlist are a future step.</p>
         </CardContent>
       </Card>
     </div>
