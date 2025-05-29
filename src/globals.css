@@ -18,58 +18,58 @@ body {
     --popover: 0 0% 100%; 
     --popover-foreground: 240 6% 10%;
 
-    --primary: 231 48% 48%; /* #3F51B5 - Deep Blue */
+    --primary: 174 100% 29%; /* Teal - Changed for a more "futuristic/modern" feel */
     --primary-foreground: 0 0% 100%; 
 
-    --secondary: 231 40% 90%; 
-    --secondary-foreground: 231 48% 30%;
+    --secondary: 240 5% 90%; /* Lighter gray */
+    --secondary-foreground: 240 6% 25%; /* Darker text on light secondary */
 
-    --muted: 240 5% 90%; /* Light gray for muted elements */
-    --muted-foreground: 240 5% 45%; /* Darker gray for muted text */
+    --muted: 240 5% 90%; 
+    --muted-foreground: 240 5% 45%; 
 
-    --accent: 174 100% 29%; /* #009688 - Teal */
+    --accent: 174 80% 40%; /* Slightly lighter/brighter Teal */
     --accent-foreground: 0 0% 100%; 
 
-    --destructive: 0 72% 51%; /* Slightly less saturated red */
+    --destructive: 0 72% 51%; 
     --destructive-foreground: 0 0% 98%;
 
-    --border: 240 5% 88%; /* Subtle border */
-    --input: 240 5% 93%; /* Slightly off-white input background */
-    --ring: 231 48% 48%; 
+    --border: 240 5% 88%; 
+    --input: 240 5% 93%; 
+    --ring: 174 90% 35%; /* Ring color related to primary */
 
     --radius: 0.5rem;
 
-    --chart-1: 231 48% 48%; 
-    --chart-2: 174 100% 29%;
-    --chart-3: 231 40% 65%;
-    --chart-4: 174 80% 45%;
-    --chart-5: 240 5% 50%; /* Neutral Gray */
+    --chart-1: 174 100% 29%; 
+    --chart-2: 231 48% 48%; /* Original Blue as secondary chart color */
+    --chart-3: 174 80% 50%;
+    --chart-4: 231 40% 65%;
+    --chart-5: 240 5% 50%; 
 
-    /* Admin Sidebar - Modern & Clean (inspired by Sparic, but with your blue) */
-    --sidebar-background: 240 6% 10%; /* Very dark (almost black) for high contrast */
-    --sidebar-foreground: 240 5% 85%; /* Light gray/off-white text */
+    /* Admin Sidebar - Modern & Clean Dark Theme */
+    --sidebar-background: 240 6% 12%; /* Very dark gray, almost black */
+    --sidebar-foreground: 240 5% 80%; /* Off-white / light gray for text */
     
-    --sidebar-primary: 231 55% 55%; /* Brighter version of your primary blue for active items */
+    --sidebar-primary: 174 90% 40%; /* Bright Teal for active items */
     --sidebar-primary-foreground: 0 0% 100%; /* White text on active items */
     
-    --sidebar-accent: 240 6% 15%; /* Slightly lighter dark for hover backgrounds */
-    --sidebar-accent-foreground: 231 50% 70%; /* Lighter blue for text on hover */
+    --sidebar-accent: 240 6% 18%; /* Slightly lighter dark for hover backgrounds */
+    --sidebar-accent-foreground: 174 80% 60%; /* Lighter teal for text on hover */
     
-    --sidebar-border: 240 6% 18%; /* Subtle darker border within sidebar */
-    --sidebar-ring: 231 55% 60%;  /* Ring color for focus */
+    --sidebar-border: 240 6% 20%; /* Subtle darker border within sidebar */
+    --sidebar-ring: 174 90% 45%;  /* Ring color for focus, related to sidebar primary */
   }
 
   .dark {
-    --background: 240 6% 10%; /* Very dark main background */
-    --foreground: 240 5% 90%; /* Light gray/off-white text */
+    --background: 240 6% 10%; 
+    --foreground: 240 5% 90%; 
 
-    --card: 240 6% 14%; /* Darker card background */
+    --card: 240 6% 14%; 
     --card-foreground: 240 5% 90%;
 
-    --popover: 240 6% 12%; /* Darker popover */
+    --popover: 240 6% 12%; 
     --popover-foreground: 240 5% 90%;
 
-    --primary: 231 55% 60%; /* Brighter Primary for dark mode */
+    --primary: 174 80% 45%; /* Brighter Teal for dark mode primary */
     --primary-foreground: 0 0% 100%; 
 
     --secondary: 240 6% 20%; 
@@ -78,31 +78,32 @@ body {
     --muted: 240 6% 22%;
     --muted-foreground: 240 5% 60%;
 
-    --accent: 174 80% 45%; /* Brighter Teal for accent */
-    --accent-foreground: 0 0% 100%; 
+    --accent: 174 70% 55%; /* Even brighter Teal for dark mode accent */
+    --accent-foreground: 0 0% 10%; 
 
     --destructive: 0 65% 55%; 
     --destructive-foreground: 0 0% 98%;
 
     --border: 240 6% 20%;
     --input: 240 6% 18%;
-    --ring: 231 55% 60%; 
+    --ring: 174 80% 50%; 
     
-    --chart-1: 231 55% 60%;
-    --chart-2: 174 80% 45%;
-    --chart-3: 231 50% 70%;
-    --chart-4: 174 70% 55%;
+    --chart-1: 174 80% 45%;
+    --chart-2: 231 55% 60%;
+    --chart-3: 174 70% 60%;
+    --chart-4: 231 50% 70%;
     --chart-5: 240 5% 60%;
 
-    /* Sidebar in dark mode - can be the same as light mode's sidebar if it's always dark-themed */
-    --sidebar-background: 240 6% 8%; /* Even darker for distinct sidebar in dark mode */
-    --sidebar-foreground: 240 5% 88%; 
-    --sidebar-primary: 231 60% 65%; 
+    /* Sidebar in dark mode can share theme with light if sidebar is always dark, or have its own variants */
+    /* Keeping sidebar theme consistent as it's already dark */
+    --sidebar-background: 240 6% 10%; /* Slightly darker if needed */
+    --sidebar-foreground: 240 5% 85%; 
+    --sidebar-primary: 174 85% 48%; 
     --sidebar-primary-foreground: 0 0% 100%; 
-    --sidebar-accent: 240 6% 13%; 
-    --sidebar-accent-foreground: 231 55% 75%; 
-    --sidebar-border: 240 6% 15%; 
-    --sidebar-ring: 231 60% 70%; 
+    --sidebar-accent: 240 6% 15%; 
+    --sidebar-accent-foreground: 174 75% 65%; 
+    --sidebar-border: 240 6% 17%; 
+    --sidebar-ring: 174 85% 50%; 
   }
 }
 
@@ -119,13 +120,13 @@ body {
     height: 8px;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-muted/30;
+    @apply bg-transparent; /* Make track transparent */
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted rounded;
+    @apply bg-muted rounded; /* Use muted for thumb */
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted/80;
+    @apply bg-muted-foreground/50; /* Darken on hover */
   }
 }
 
@@ -137,4 +138,6 @@ body {
     transition-duration: 300ms;
   }
 }
+    
+
     
