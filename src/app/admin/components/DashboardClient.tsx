@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { fetchAdminDashboardData, triggerAiTabulation, exportGuestsToCsv, resendInvitations, triggerSendFeedbackRequestsAction } from '../actions';
 import type { InvitationData, RsvpStats, RsvpStatus, EventData } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock, PlusCircle, CalendarClock, EyeOff, MessageSquareQuote, Info } from 'lucide-react';
+import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock, PlusCircle, CalendarClock, EyeOff, MessageSquareQuote, Info, Layers } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from "@/components/ui/progress";
 import type { TabulateRsvpStatsOutput } from '@/ai/flows/tabulate-rsvps';
@@ -127,18 +127,27 @@ export default function DashboardClient() {
       toast({ title: "No Guests to Remind", description: "AI analysis found no guests needing reminders, or analysis not run.", variant: "default" });
       return;
     }
-    const guestsToRemindTokens = aiSummary.guestsToRemind
-      .map(guestIdentifier => invitations.find(inv => inv.guestName === guestIdentifier || inv.guestEmail === guestIdentifier)?.uniqueToken)
+    const guestsToRemindInvitationIds = aiSummary.guestsToRemind
+      .map(guestIdentifier => {
+        // Attempt to match by name first, then by email as a fallback. This assumes guestIdentifier might be name or email.
+        const inv = invitations.find(inv => inv.guestName === guestIdentifier || inv.guestEmail === guestIdentifier);
+        return inv?.id;
+      })
       .filter(Boolean) as string[];
 
-    if (guestsToRemindTokens.length === 0) {
+    if (guestsToRemindInvitationIds.length === 0) {
         toast({ title: "No Matching Guests", description: "Could not match AI's list of guests to remind with actual invitations.", variant: "destructive"});
         return;
     }
 
-    setIsAiLoading(true); // Can reuse isAiLoading or have a specific one
-    const result = await resendInvitations(guestsToRemindTokens); 
-    toast({ title: result.success ? "Success" : "Error", description: result.message, variant: result.success ? "default" : "destructive"});
+    setIsAiLoading(true); 
+    const result = await resendInvitations(guestsToRemindInvitationIds); 
+    toast({ 
+      title: result.success ? "Invitations Queued" : "Error", 
+      description: result.message, 
+      variant: result.success ? "default" : "destructive",
+      duration: result.success ? 5000 : 8000
+    });
     setIsAiLoading(false);
   };
 
@@ -180,13 +189,13 @@ export default function DashboardClient() {
     const result = await triggerSendFeedbackRequestsAction(currentEvent.id);
     if (result.success) {
         toast({
-            title: "Feedback Requests Processed",
-            description: result.message,
-            duration: 10000, // Show longer for detailed message
+            title: "Feedback Requests Queued",
+            description: result.message, // Message now explains queuing and limits
+            duration: 10000, 
         });
     } else {
         toast({
-            title: "Error Sending Feedback Requests",
+            title: "Error Queuing Feedback Requests",
             description: result.message,
             variant: "destructive",
         });
@@ -334,7 +343,7 @@ export default function DashboardClient() {
                 </Button>
                 {aiSummary && aiSummary.guestsToRemind.length > 0 && (
                   <Button onClick={handleResendInvitations} disabled={isAiLoading} variant="outline">
-                    <Send className="mr-2 h-4 w-4" /> {isAiLoading && aiSummary ? 'Sending...' : `Resend to ${aiSummary.guestsToRemind.length} Unresponsive`}
+                    <Send className="mr-2 h-4 w-4" /> {isAiLoading && aiSummary ? 'Queuing...' : `Queue Resend to ${aiSummary.guestsToRemind.length} Unresponsive`}
                   </Button>
                 )}
               </div>
@@ -376,8 +385,8 @@ export default function DashboardClient() {
                         disabled={!currentEvent || !stats || stats.confirmed === 0 || isSendingFeedback}
                         className="w-full sm:w-auto"
                     >
-                      <MessageSquareQuote className="mr-2 h-4 w-4" /> 
-                      {isSendingFeedback ? 'Sending Feedback Requests...' : `Send Feedback Requests (${stats?.confirmed || 0} confirmed)`}
+                      <Layers className="mr-2 h-4 w-4" /> 
+                      {isSendingFeedback ? 'Queuing Feedback Requests...' : `Queue Feedback Requests (${stats?.confirmed || 0} confirmed)`}
                     </Button>
                     <Button onClick={handleExportCsv} variant="outline" size="sm" disabled={!currentEvent} className="w-full sm:w-auto">
                         <Download className="mr-2 h-4 w-4" /> Export CSV
@@ -387,10 +396,12 @@ export default function DashboardClient() {
             </CardHeader>
             <CardContent>
               <Alert variant="default" className="mb-4 border-amber-500 bg-amber-50 dark:bg-amber-900/30">
-                <Info className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                <AlertTitle className="text-amber-700 dark:text-amber-300">Email Sending Notice</AlertTitle>
+                <MailWarning className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <AlertTitle className="text-amber-700 dark:text-amber-300">Email Sending & Queueing Notice</AlertTitle>
                 <AlertDescription className="text-sm text-amber-600 dark:text-amber-400">
-                    Actions like sending feedback requests trigger emails. Current demo uses Brevo's free tier (limited to {BREVO_DAILY_LIMIT} emails/day). For large events, a proper queuing system is needed.
+                    Actions like sending/resending invitations or feedback requests now add emails to a processing queue.
+                    Actual sending happens in the background. Current demo uses Brevo's free tier (limited to {BREVO_DAILY_LIMIT} emails/day). 
+                    For large events, a robust queueing system and appropriate email plan are critical.
                 </AlertDescription>
               </Alert>
               <div className="overflow-x-auto">
@@ -439,11 +450,13 @@ export default function DashboardClient() {
         <CardHeader><CardTitle>Developer Notes / TODOs</CardTitle></CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-1">
             <p>• <strong>Firestore Setup:</strong> Ensure Firebase Admin SDK is configured. Composite indexes might be needed (check server logs for links). Events, Invitations, and Feedback collections have specific index requirements mentioned in `db.ts` comments.</p>
-            <p>• <strong>Email Queueing:</strong> Critical for >300 guests. Current implementation sends emails sequentially for demo; production requires Cloud Tasks/PubSub.</p>
-            <p>• <strong>Feedback System:</strong> Basic feedback form & storage in place. Feedback summary for AI needs robust implementation.</p>
-            <p>• <strong>Waitlist Management:</strong> UI and basic accept/decline logic implemented. Emails are sent.</p>
+            <p>• <strong>Email Queueing:</strong> Critical for >300 guests. Current implementation queues emails conceptually (logs to console & DB status 'queued'). Production requires real queue (Cloud Tasks/PubSub) & worker functions.</p>
+            <p>• <strong>Feedback System:</strong> Feedback form & storage in place. Feedback summary for AI analysis uses simple concatenation; could be enhanced with an AI summarization flow.</p>
+            <p>• <strong>Waitlist Management:</strong> UI and accept/decline logic implemented. Emails are queued.</p>
         </CardContent>
       </Card>
     </div>
   );
 }
+
+    

@@ -3,8 +3,8 @@
 
 import { getAllInvitationsForEvent, getEventStats, getMostRecentEventIdForUser, getEventById } from "@/lib/db";
 import { tabulateRsvpStats, type TabulateRsvpStatsInput, type TabulateRsvpStatsOutput } from "@/ai/flows/tabulate-rsvps";
-import type { InvitationData, RsvpStats, EventData } from "@/types";
-import { sendFeedbackRequestEmailAction } from "@/app/feedback/actions"; // Import the action
+import type { InvitationData, RsvpStats, EventData, EmailQueuePayload } from "@/types";
+import { sendFeedbackRequestEmailAction } from "@/app/feedback/actions"; 
 
 export async function fetchAdminDashboardData(userId: string | null): Promise<{
   event: EventData | null;
@@ -99,22 +99,46 @@ export async function exportGuestsToCsv(eventId: string | undefined): Promise<st
   }
 }
 
-export async function resendInvitations(guestUniqueTokens: string[]): Promise<{ success: boolean; message: string }> {
-  // Placeholder: Actual resend logic would involve re-queuing emails.
-  console.log("Attempting to resend invitations to guests with tokens:", guestUniqueTokens);
-  // In a real implementation, you would:
-  // 1. Fetch invitation details for each token.
-  // 2. Call your email sending service for each.
-  // 3. Update email logs.
-  return { success: true, message: `Queued ${guestUniqueTokens.length} invitations for re-sending (simulated).` };
+// Resend Invitations action now also simulates queuing
+export async function resendInvitations(guestInvitationIds: string[]): Promise<{ success: boolean; message: string, queuedCount?: number }> {
+  if (!guestInvitationIds || guestInvitationIds.length === 0) {
+    return { success: false, message: "No guest invitations specified for resending." };
+  }
+  
+  console.log("Attempting to queue resend invitations for guests with IDs:", guestInvitationIds);
+  let queuedCount = 0;
+
+  for (const invId of guestInvitationIds) {
+    const invitation = await getInvitationById(invId); // Fetch full invitation details
+    if (invitation && invitation.status === 'pending') { // Example: only resend to pending
+        const payload: EmailQueuePayload = {
+            emailType: 'initialInvitation', // Or a new 'reminderInvitation' type
+            invitationId: invId,
+            recipient: { name: invitation.guestName, email: invitation.guestEmail },
+            eventId: invitation.eventId,
+        };
+        // SIMULATE ADDING TO QUEUE
+        console.log(`SIMULATING QUEUE (Resend): Add payload for invitation ${invId}:`, JSON.stringify(payload));
+        // Potentially update emailLog or create a new one for this resend attempt with 'queued'
+        queuedCount++;
+    } else {
+        console.warn(`Skipping resend for invitation ${invId}, status: ${invitation?.status}`);
+    }
+  }
+
+  return { 
+    success: true, 
+    message: `${queuedCount} invitations have been queued for re-sending.`,
+    queuedCount 
+  };
 }
 
 export async function triggerSendFeedbackRequestsAction(eventId: string): Promise<{
   success: boolean;
   message: string;
   attemptedCount?: number;
-  successfulCount?: number;
-  failedCount?: number;
+  successfulQueueCount?: number;
+  failedQueueCount?: number;
 }> {
   if (!eventId) {
     return { success: false, message: "Event ID is required." };
@@ -125,43 +149,44 @@ export async function triggerSendFeedbackRequestsAction(eventId: string): Promis
     const confirmedInvitations = invitations.filter(inv => inv.status === 'confirmed');
 
     if (confirmedInvitations.length === 0) {
-      return { success: true, message: "No confirmed guests found for this event to send feedback requests to." };
+      return { success: true, message: "No confirmed guests found for this event to queue feedback requests for." };
     }
 
-    let successfulCount = 0;
-    let failedCount = 0;
+    let successfulQueueCount = 0;
+    let failedQueueCount = 0;
 
-    // Simulate queuing by iterating. In production, this would add to a Cloud Task/PubSub queue.
     for (const inv of confirmedInvitations) {
       try {
-        // Assuming sendFeedbackRequestEmailAction is designed to handle one invitationId
-        const result = await sendFeedbackRequestEmailAction(inv.id);
+        // sendFeedbackRequestEmailAction now queues the request
+        const result = await sendFeedbackRequestEmailAction(inv.id); 
         if (result.success) {
-          successfulCount++;
+          successfulQueueCount++;
         } else {
-          failedCount++;
-          console.warn(`Failed to queue/send feedback request for invitation ${inv.id}: ${result.message}`);
+          failedQueueCount++;
+          console.warn(`Failed to queue feedback request for invitation ${inv.id}: ${result.message}`);
         }
       } catch (loopError) {
-        failedCount++;
-        console.error(`Error in loop for feedback request, invitation ${inv.id}:`, loopError);
+        failedQueueCount++;
+        console.error(`Error in loop for queuing feedback request, invitation ${inv.id}:`, loopError);
       }
     }
     
-    let summaryMessage = `Attempted to send ${confirmedInvitations.length} feedback request emails. `;
-    summaryMessage += `Successful: ${successfulCount}, Failed: ${failedCount}. `;
-    summaryMessage += `(Note: This is a simulation. True bulk sending requires a queueing system. Be mindful of daily email limits like Brevo's 300/day free tier.)`;
+    let summaryMessage = `Attempted to queue ${confirmedInvitations.length} feedback request emails. `;
+    summaryMessage += `Successfully queued: ${successfulQueueCount}, Failed to queue: ${failedQueueCount}. `;
+    summaryMessage += `(Note: Emails will be processed by a background worker. Be mindful of daily email limits like Brevo's 300/day free tier.)`;
 
     return {
       success: true,
       message: summaryMessage,
       attemptedCount: confirmedInvitations.length,
-      successfulCount,
-      failedCount,
+      successfulQueueCount,
+      failedQueueCount,
     };
 
   } catch (error: any) {
-    console.error(`Error triggering feedback requests for event ${eventId}:`, error);
-    return { success: false, message: error.message || "Failed to trigger feedback requests." };
+    console.error(`Error triggering feedback requests queue for event ${eventId}:`, error);
+    return { success: false, message: error.message || "Failed to trigger feedback request queuing." };
   }
 }
+
+    

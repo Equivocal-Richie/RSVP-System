@@ -22,7 +22,6 @@ import Link from 'next/link';
 
 const MAX_EVENT_NAME_LENGTH = 70;
 
-// Base object schemas
 const eventDetailsObjectSchema = z.object({
   name: z.string().min(3, "Event name is too short").max(MAX_EVENT_NAME_LENGTH, `Event name is too long (max ${MAX_EVENT_NAME_LENGTH} chars)`),
   description: z.string().min(10, "Description is too short"),
@@ -43,10 +42,8 @@ const guestListObjectSchema = z.object({
   })).min(1, "Please add at least one guest."),
 });
 
-// Merged schema before refinement
 const combinedObjectSchema = eventDetailsObjectSchema.merge(guestListObjectSchema);
 
-// Apply refinement to the merged schema
 const wizardSchema = combinedObjectSchema.refine(data => {
   if (data.hasSeatLimit === 'yes') {
     return data.seatLimitNumber != null && data.seatLimitNumber > 0;
@@ -76,7 +73,6 @@ export function CreateEventWizard() {
     defaultValues: {
       name: "",
       description: "",
-      // date: undefined, // Let calendar default handle it or set explicitly if needed
       time: "18:00",
       location: "",
       mood: 'casual',
@@ -96,7 +92,7 @@ export function CreateEventWizard() {
     } else if (currentStep === 2) {
       isValid = await trigger(Object.keys(guestListObjectSchema.shape) as Array<keyof CreateEventFormData>);
     } else if (currentStep === 3) {
-      isValid = true; // Preview step, validation done on previous steps
+      isValid = true; 
     }
     
     if (isValid && currentStep < totalSteps) {
@@ -149,8 +145,8 @@ export function CreateEventWizard() {
         setCreatedEventId(result.eventId);
         setCurrentStep(totalSteps); 
         toast({
-          title: "Event Created Successfully!",
-          description: result.message || "Invitations are being processed.",
+          title: "Event Creation Initiated!",
+          description: result.message || `Emails for ${result.queuedEmailCount} guests are being queued.`,
         });
       } else {
         toast({
@@ -199,7 +195,6 @@ export function CreateEventWizard() {
 
   return (
     <FormProvider {...methods}>
-      {/* Removed max-w-3xl and mx-auto from Card to allow it to expand */}
       <Card className="w-full shadow-2xl">
         <CardHeader>
           <CardTitle className="text-2xl text-center text-primary">Create New Event (Step {currentStep} of {totalSteps})</CardTitle>
@@ -218,7 +213,7 @@ export function CreateEventWizard() {
                 Back
               </Button>
             )}
-             {currentStep === 1 && <div />} {/* Placeholder to align Next button to the right */}
+             {currentStep === 1 && <div />} 
             {currentStep < 3 && (
               <Button type="button" onClick={handleNext} disabled={isLoading} className="ml-auto">
                 Next
@@ -226,7 +221,7 @@ export function CreateEventWizard() {
             )}
             {currentStep === 3 && (
               <Button type="submit" disabled={isLoading} className="ml-auto">
-                {isLoading ? "Processing..." : "Create Event & Prepare Invitations"}
+                {isLoading ? "Processing..." : "Create Event & Queue Invitations"}
               </Button>
             )}
              {currentStep === totalSteps && ( 

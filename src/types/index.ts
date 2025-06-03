@@ -62,15 +62,22 @@ export interface ReservationData {
   updatedAt?: TimestampString;
 }
 
-export type EmailStatus = 'queued' | 'sent' | 'failed' | 'delivered' | 'opened' | 'clicked' | 'bounced';
-export type EmailType = 'initialInvitation' | 'publicRsvpConfirmed' | 'publicRsvpWaitlisted' | 'waitlistAccepted' | 'waitlistDeclined' | 'eventFeedback';
-
+export type EmailStatus = 'queued' | 'processing' | 'sent' | 'failed' | 'delivered' | 'opened' | 'clicked' | 'bounced';
+export type EmailType = 
+  | 'initialInvitation' 
+  | 'publicRsvpConfirmed' 
+  | 'publicRsvpWaitlisted' 
+  | 'waitlistAccepted' 
+  | 'waitlistDeclined' 
+  | 'eventFeedback'
+  | 'otpVerification'; // Added for OTP, though OTPs might be sent directly
 
 export interface EmailLogData {
   id: string; // Firestore document ID
-  invitationId: string;
-  eventId: string;
+  invitationId: string; // Can be null if email is not related to a specific invitation (e.g. OTP)
+  eventId?: string; // Can be null if not event-specific (e.g. OTP for general account)
   emailAddress: string;
+  emailType: EmailType; // What kind of email was this?
   sentAt: TimestampString | null; // from Firestore Timestamp, null if queued/failed before sending
   status: EmailStatus;
   brevoMessageId?: string; // Optional: To store Brevo's message ID for tracking
@@ -78,6 +85,23 @@ export interface EmailLogData {
   createdAt?: TimestampString;
   // No updatedAt for email logs, typically immutable after creation or final status update
 }
+
+export interface EmailQueuePayload {
+  emailType: EmailType;
+  // For invitation-related emails
+  invitationId?: string; 
+  // For general emails or where invitationId isn't primary context
+  eventId?: string;
+  recipient: {
+    name: string;
+    email: string;
+  };
+  // Specific data for certain email types
+  otp?: string; // For OTP emails
+  // Other fields can be added as needed per emailType
+  // e.g. eventName for context if not fetching full event object in worker
+}
+
 
 export interface RsvpStats {
   confirmed: number;
@@ -172,3 +196,5 @@ export interface EventForSelector {
     name: string;
     date: TimestampString;
 }
+
+    

@@ -6,11 +6,13 @@ import {
   getInvitationByToken, 
   getEventById, 
   createEventFeedback,
-  createEmailLog
+  createEmailLog, // Re-added createEmailLog
+  getInvitationById as getInvitationByIdFromDb // Renamed to avoid conflict
 } from "@/lib/db";
-import type { EventFeedbackData, GenerateFeedbackEmailInput } from "@/types";
-import { generateEventFeedbackEmail } from "@/ai/flows/generate-feedback-email-flow";
-import { sendGenericEmail } from "@/lib/emailService";
+import type { EventFeedbackData, GenerateFeedbackEmailInput, EmailQueuePayload } from "@/types";
+// AI and direct email sending are deferred to worker
+// import { generateEventFeedbackEmail } from "@/ai/flows/generate-feedback-email-flow";
+// import { sendGenericEmail } from "@/lib/emailService";
 
 const FeedbackFormSchema = z.object({
   invitationToken: z.string().min(1, "Invitation token is missing."),
@@ -53,15 +55,13 @@ export async function saveEventFeedback(
       return { success: false, message: "Invalid invitation link. Feedback cannot be submitted." };
     }
     if (invitation.status !== 'confirmed') {
-        // Optionally, only allow confirmed guests to submit feedback, or handle other statuses differently.
-        // For now, we allow anyone with a valid invitation link who attended (or whose status implies they could have).
         console.warn(`Feedback submitted for invitation ${invitation.id} with status ${invitation.status}.`);
     }
 
     const feedbackToSave: Omit<EventFeedbackData, 'id' | 'submittedAt'> = {
       eventId: invitation.eventId,
       invitationId: invitation.id,
-      guestNameAtTimeOfFeedback: invitation.guestName, // Or use the name from the form if you allow editing it
+      guestNameAtTimeOfFeedback: invitation.guestName, 
       rating,
       likedMost,
       suggestionsForImprovement: suggestionsForImprovement || "",
@@ -87,81 +87,51 @@ export async function saveEventFeedback(
   }
 }
 
+// This action now just queues the request. The actual email sending will be done by a worker.
 export async function sendFeedbackRequestEmailAction(invitationId: string): Promise<{success: boolean, message: string}> {
     if (!invitationId) {
         return { success: false, message: "Invitation ID is required." };
     }
 
-    // In a real scenario, this action would likely be triggered by a cron job or a button in admin UI post-event.
-    // For bulk sending, this logic would be in a Cloud Function processing a queue.
-
     try {
-        const invitation = await db.getInvitationById(invitationId); // Assuming db has getInvitationById
+        const invitation = await getInvitationByIdFromDb(invitationId);
         if (!invitation || invitation.status !== 'confirmed') {
-            return { success: false, message: `Cannot send feedback request: Invitation ${invitationId} not found or guest did not confirm.` };
+            return { success: false, message: `Cannot queue feedback request: Invitation ${invitationId} not found or guest did not confirm.` };
         }
 
         const event = await getEventById(invitation.eventId);
         if (!event) {
-            return { success: false, message: `Cannot send feedback request: Event ${invitation.eventId} not found.` };
+            return { success: false, message: `Cannot queue feedback request: Event ${invitation.eventId} not found.` };
         }
 
-        const aiInput: GenerateFeedbackEmailInput = {
-            eventName: event.name,
-            guestName: invitation.guestName,
+        const emailPayload: EmailQueuePayload = {
+            emailType: 'eventFeedback',
+            invitationId: invitation.id,
+            recipient: {
+                name: invitation.guestName,
+                email: invitation.guestEmail,
+            },
+            eventId: event.id, // For context in worker
         };
-        const emailContent = await generateEventFeedbackEmail(aiInput);
-        
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002';
-        const feedbackLink = `${appUrl}/feedback/${invitation.uniqueToken}`;
 
-        const htmlBody = `
-            <p>${emailContent.greeting}</p>
-            <p>${emailContent.body}</p>
-            <p>Please use the link below to share your thoughts:</p>
-            <p><a href="${feedbackLink}" style="display: inline-block; padding: 10px 20px; margin: 10px 0; background-color: hsl(var(--primary)); color: white; text-decoration: none; border-radius: 5px;">Share Feedback</a></p>
-            <p>If the button doesn't work, copy and paste this link: ${feedbackLink}</p>
-            <p>${emailContent.closing}</p>
-        `;
+        // SIMULATE ADDING TO QUEUE
+        console.log(`SIMULATING QUEUE: Add payload for feedback request ${invitation.id}:`, JSON.stringify(emailPayload));
         
-        const emailResult = await sendGenericEmail(
-            invitation.guestEmail, 
-            invitation.guestName, 
-            emailContent.subject, 
-            `<html><body><div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee;">${htmlBody}</div></body></html>`
-        );
-
         await createEmailLog({
             invitationId: invitation.id,
             eventId: event.id,
+            emailType: 'eventFeedback',
             emailAddress: invitation.guestEmail,
-            status: emailResult.success ? 'sent' : 'failed',
-            brevoMessageId: emailResult.messageId,
-            errorMessage: emailResult.error,
-            sentAt: emailResult.success ? new Date().toISOString() : null, // Log actual send time
+            status: 'queued', // Mark as queued
+            sentAt: null, // Not sent yet
         });
 
-        if (emailResult.success) {
-            return { success: true, message: `Feedback request email sent to ${invitation.guestEmail}.`};
-        } else {
-            return { success: false, message: `Failed to send feedback request to ${invitation.guestEmail}: ${emailResult.error}`};
-        }
+        return { success: true, message: `Feedback request for ${invitation.guestEmail} has been queued.`};
 
     } catch (error: any) {
         console.error(`Error in sendFeedbackRequestEmailAction for invitation ${invitationId}:`, error);
-        return { success: false, message: `An unexpected error occurred: ${error.message}` };
+        return { success: false, message: `An unexpected error occurred while queuing feedback request: ${error.message}` };
     }
 }
 
-// Helper (add to db.ts if not already present for getInvitationById)
-// This is a simplified version. Ensure getInvitationById exists in db.ts or adapt.
-namespace db { export async function getInvitationById(id: string): Promise<InvitationData | null> {
-    const docRef = (await import('@/lib/db')).db.collection('invitations').doc(id); // Dynamic import to avoid cycle
-    const docSnap = await docRef.get();
-    if (!docSnap.exists) return null;
-    return convertTimestampsInObj(docSnap.data() as InvitationData);
-}}
-// Helper (add to db.ts if not already present for convertTimestampsInObj)
-function convertTimestampsInObj<T extends Record<string, any>>(data: T): T { // Dynamic import to avoid cycle
-  return (require('@/lib/db') as any).convertTimestampsInObj(data);
-}
+    

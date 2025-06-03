@@ -3,14 +3,16 @@
 
 import { z } from "zod";
 import { createEvent, createInvitations, createEmailLog, getEventById, updateEventPublicStatus } from '@/lib/db';
-import type { EventData, GuestInput, EventMood, InvitationData, EmailStatus } from '@/types';
-import { generatePersonalizedInvitation, type GenerateInvitationTextInput, type GenerateInvitationTextOutput as AIGenerateOutput } from '@/ai/flows/generate-invitation-text-flow';
-import { sendInvitationEmail } from '@/lib/emailService';
+import type { EventData, GuestInput, EventMood, InvitationData, EmailStatus, EmailQueuePayload } from '@/types';
+// AI generation for email content is now deferred to the (future) worker.
+// import { generatePersonalizedInvitation, type GenerateInvitationTextInput, type GenerateInvitationTextOutput as AIGenerateOutput } from '@/ai/flows/generate-invitation-text-flow';
+// Direct email sending is removed from this action.
+// import { sendInvitationEmail } from '@/lib/emailService';
 import { uploadEventImage } from '@/lib/storage';
 
 
 const CreateEventServerSchema = z.object({
-  creatorId: z.string().min(1, "Creator ID is required."), // Added creatorId
+  creatorId: z.string().min(1, "Creator ID is required."),
   name: z.string().min(1, "Event name is required."),
   description: z.string().min(1, "Event description is required."),
   date: z.string().refine(val => !isNaN(Date.parse(val)), { message: "Invalid date format." }), 
@@ -19,7 +21,6 @@ const CreateEventServerSchema = z.object({
   mood: z.enum(['formal', 'casual', 'celebratory', 'professional', 'themed'], { message: "Invalid event mood." }),
   seatLimit: z.preprocess(val => parseInt(String(val), 10), z.number()), 
   organizerEmail: z.string().email("Invalid organizer email.").optional().or(z.literal("")),
-  // isPublic is not directly part of this form, handled by makeEventPublicServerAction
 });
 
 const GuestsSchema = z.array(z.object({
@@ -30,10 +31,10 @@ const GuestsSchema = z.array(z.object({
 
 export async function createEventAndProcessInvitations(
   formData: FormData
-): Promise<{ success: boolean; message: string; eventId?: string; invitationIds?: string[]; emailResults?: any[] }> {
+): Promise<{ success: boolean; message: string; eventId?: string; invitationIds?: string[]; queuedEmailCount?: number }> {
   
   const eventDetailsRaw = {
-    creatorId: formData.get("creatorId"), // Added creatorId
+    creatorId: formData.get("creatorId"),
     name: formData.get("name"),
     description: formData.get("description"),
     date: formData.get("date"),
@@ -70,7 +71,7 @@ export async function createEventAndProcessInvitations(
 
   const eventImageFile = formData.get("eventImage") as File | null;
   let eventImagePath: string | undefined = undefined;
-  const emailResults = [];
+  let queuedEmailCount = 0;
 
   try {
     if (eventImageFile && eventImageFile.size > 0) {
@@ -83,7 +84,7 @@ export async function createEventAndProcessInvitations(
     }
 
     const eventToCreate: Omit<EventData, 'id' | 'confirmedGuestsCount' | 'createdAt' | 'updatedAt'> = {
-      creatorId: eventDataFromForm.creatorId, // Added creatorId
+      creatorId: eventDataFromForm.creatorId,
       name: eventDataFromForm.name,
       description: eventDataFromForm.description,
       date: eventDataFromForm.date, 
@@ -93,8 +94,8 @@ export async function createEventAndProcessInvitations(
       seatLimit: eventDataFromForm.seatLimit,
       eventImagePath: eventImagePath, 
       organizerEmail: eventDataFromForm.organizerEmail || undefined,
-      isPublic: false, // New events are not public by default
-      publicRsvpLink: undefined, // New events don't have public link
+      isPublic: false, 
+      publicRsvpLink: undefined, 
     };
     
     const newEvent = await createEvent(eventToCreate);
@@ -105,69 +106,42 @@ export async function createEventAndProcessInvitations(
 
     const createdInvitations = await createInvitations(newEvent.id, guestList);
     if (!createdInvitations || createdInvitations.length === 0) {
-      // Potentially rollback event creation or mark as incomplete
       return { success: false, message: "Event created, but failed to create invitations." };
     }
     
-    const currentEventDetails = await getEventById(newEvent.id); // Re-fetch to ensure consistency
-    if (!currentEventDetails) {
-        return { success: false, message: "Failed to fetch created event details for sending emails." };
-    }
-
-    console.log(`Event ${newEvent.id} created by ${currentEventDetails.creatorId}. ${createdInvitations.length} invitations created. Processing emails...`);
+    console.log(`Event ${newEvent.id} created by ${newEvent.creatorId}. ${createdInvitations.length} invitations created. Simulating queuing emails...`);
 
     for (const invitation of createdInvitations) {
-      let emailStatus: EmailStatus = 'queued';
-      let brevoMessageId: string | undefined;
-      let errorMessage: string | undefined;
-      let sentAtValue: any = null;
+      const emailPayload: EmailQueuePayload = {
+        emailType: 'initialInvitation',
+        invitationId: invitation.id,
+        recipient: {
+          name: invitation.guestName,
+          email: invitation.guestEmail,
+        },
+        eventId: newEvent.id, // Optional: For context in worker
+      };
 
-      try {
-        const aiInputForEmail: GenerateInvitationTextInput = {
-          eventName: currentEventDetails.name,
-          eventDescription: currentEventDetails.description,
-          eventMood: currentEventDetails.mood,
-          guestName: invitation.guestName,
-        };
-        const aiEmailContent = await generatePersonalizedInvitation(aiInputForEmail);
-
-        const emailResult = await sendInvitationEmail(invitation, currentEventDetails, aiEmailContent);
-        
-        if (emailResult.success) {
-          emailStatus = 'sent';
-          brevoMessageId = emailResult.messageId;
-          sentAtValue = new Date().toISOString();
-          console.log(`Email sent to ${invitation.guestEmail} for event ${newEvent.id}. Message ID: ${brevoMessageId}`);
-        } else {
-          emailStatus = 'failed';
-          errorMessage = emailResult.error || "Unknown error sending email.";
-          console.error(`Failed to send email to ${invitation.guestEmail} for event ${newEvent.id}: ${errorMessage}`);
-        }
-      } catch (aiOrEmailError: any) {
-        emailStatus = 'failed';
-        errorMessage = `Error during AI content generation or email dispatch: ${aiOrEmailError.message}`;
-        console.error(`Critical error processing invitation ${invitation.id}: ${errorMessage}`);
-      }
-
-      emailResults.push({ invitationId: invitation.id, email: invitation.guestEmail, status: emailStatus, messageId: brevoMessageId, error: errorMessage});
+      // SIMULATE ADDING TO QUEUE
+      console.log(`SIMULATING QUEUE: Add payload for invitation ${invitation.id}:`, JSON.stringify(emailPayload));
       
       await createEmailLog({
         invitationId: invitation.id,
         eventId: newEvent.id,
+        emailType: 'initialInvitation',
         emailAddress: invitation.guestEmail,
-        status: emailStatus,
-        brevoMessageId: brevoMessageId,
-        errorMessage: errorMessage,
-        sentAt: sentAtValue,
+        status: 'queued', // Mark as queued
+        sentAt: null, // Not sent yet
       });
+      queuedEmailCount++;
     }
 
     return { 
       success: true, 
-      message: `Event and invitations created. Email processing complete. Check logs for details. Processed ${emailResults.length} emails.`,
+      message: `Event created. ${queuedEmailCount} invitation emails have been queued for sending.`,
       eventId: newEvent.id,
       invitationIds: createdInvitations.map(inv => inv.id),
-      emailResults,
+      queuedEmailCount,
     };
 
   } catch (error) {
@@ -176,10 +150,15 @@ export async function createEventAndProcessInvitations(
     if (error instanceof Error) {
         errorMessageText = error.message;
     }
-    return { success: false, message: errorMessageText, emailResults };
+    return { success: false, message: errorMessageText };
   }
 }
 
+
+// AI content generation is now part of the (future) worker, not directly called by client actions
+// So, this specific client-facing AI text generation might be less relevant or refactored.
+// For now, let's keep it as is if it's used for UI previews before queueing.
+import { generatePersonalizedInvitation, type GenerateInvitationTextInput, type GenerateInvitationTextOutput as AIGenerateOutput } from '@/ai/flows/generate-invitation-text-flow';
 
 export interface GenerateInvitationTextClientInput {
   eventName: string;
@@ -187,6 +166,8 @@ export interface GenerateInvitationTextClientInput {
   eventMood: EventMood;
   guestName: string;
   adjustmentInstructions?: string;
+  // emailType might be useful if previewing different types of emails
+  emailType?: 'initialInvitation' | 'publicRsvpConfirmed' | 'publicRsvpWaitlisted' | 'waitlistAccepted' | 'waitlistDeclined';
 }
 export interface GenerateInvitationTextClientOutput {
   success: boolean;
@@ -205,6 +186,7 @@ export async function generatePersonalizedInvitationText(input: GenerateInvitati
       eventMood: input.eventMood, 
       guestName: input.guestName,
       adjustmentInstructions: input.adjustmentInstructions,
+      emailType: input.emailType || 'initialInvitation', // Default to initial invitation
     };
 
     const result: AIGenerateOutput = await generatePersonalizedInvitation(aiInput); 
@@ -232,7 +214,6 @@ export async function makeEventPublicServerAction(eventId: string): Promise<{ su
     return { success: false, message: "Event ID is required." };
   }
   try {
-    // For public links, we'll use the eventId itself as the token for simplicity
     const publicRsvpToken = eventId; 
     const success = await updateEventPublicStatus(eventId, publicRsvpToken);
     if (success) {
@@ -247,3 +228,5 @@ export async function makeEventPublicServerAction(eventId: string): Promise<{ su
     return { success: false, message: "An unexpected error occurred while making the event public." };
   }
 }
+
+    

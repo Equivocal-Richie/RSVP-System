@@ -9,13 +9,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCap
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Activity, ListChecks, UserRoundCheck, UserRoundX, AlertCircle, Info, Users, MailWarning } from 'lucide-react';
+import { Activity, ListChecks, UserRoundCheck, UserRoundX, AlertCircle, Info, Users, MailWarning, Layers } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 
-const BREVO_DAILY_LIMIT = 300; // For display
+const BREVO_DAILY_LIMIT = 300; 
 
 export default function WaitlistClient() {
   const { user, loading: authLoading } = useAuth();
@@ -24,7 +24,7 @@ export default function WaitlistClient() {
   const [selectedEventDetails, setSelectedEventDetails] = useState<EventData | null>(null);
   const [waitlistedGuests, setWaitlistedGuests] = useState<InvitationData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({}); // { [invitationId]: boolean }
+  const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({}); 
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -68,8 +68,9 @@ export default function WaitlistClient() {
     const result = await actionFunction(invitationId, eventId);
 
     if (result.success) {
-      toast({ title: "Success", description: result.message });
+      toast({ title: "Action Succeeded", description: result.message }); // Message now reflects queuing
       if (user) {
+        // Re-fetch data to update the list and counts
         const updatedData = await fetchWaitlistPageData(user.uid, selectedEventId);
         if (!updatedData.error) {
           setWaitlistedGuests(updatedData.waitlistedGuests);
@@ -138,9 +139,9 @@ export default function WaitlistClient() {
                   <SelectValue placeholder="Select an event" />
                 </SelectTrigger>
                 <SelectContent>
-                  {events.map(event => (
-                    <SelectItem key={event.id} value={event.id}>
-                      {event.name} ({format(new Date(event.date), "MMM d, yyyy")})
+                  {events.map(eventItem => ( // Renamed event to eventItem to avoid conflict
+                    <SelectItem key={eventItem.id} value={eventItem.id}>
+                      {eventItem.name} ({format(new Date(eventItem.date), "MMM d, yyyy")})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -161,9 +162,9 @@ export default function WaitlistClient() {
             </Alert>
             <Alert variant="default" className="border-amber-500 bg-amber-50 dark:bg-amber-900/30">
                 <MailWarning className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                <AlertTitle className="text-amber-700 dark:text-amber-300">Email Sending Notice</AlertTitle>
+                <AlertTitle className="text-amber-700 dark:text-amber-300">Email Queueing Notice</AlertTitle>
                 <AlertDescription className="text-sm text-amber-600 dark:text-amber-400">
-                    Accepting or declining a guest will trigger an email. Please be mindful of daily sending limits (e.g., Brevo free tier: {BREVO_DAILY_LIMIT} emails/day). For many guests, consider a staggered approach or a full queuing system for production.
+                    Accepting or declining a guest will queue an email for background sending. Please be mindful of daily sending limits (e.g., Brevo free tier: {BREVO_DAILY_LIMIT} emails/day). For production, a robust queueing system is necessary.
                 </AlertDescription>
             </Alert>
             
@@ -190,8 +191,8 @@ export default function WaitlistClient() {
                         disabled={isProcessing[guest.id] || (availableSeats <= 0 && selectedEventDetails.seatLimit > 0)}
                         className="bg-green-500 hover:bg-green-600 text-white disabled:opacity-70"
                       >
-                        {isProcessing[guest.id] ? <Activity className="mr-1 h-4 w-4 animate-spin" /> : <UserRoundCheck className="mr-1 h-4 w-4" />}
-                        Accept
+                        {isProcessing[guest.id] && isProcessing[guest.id] ? <Activity className="mr-1 h-4 w-4 animate-spin" /> : <UserRoundCheck className="mr-1 h-4 w-4" />}
+                        Accept & Queue Email
                       </Button>
                       <Button
                         variant="destructive"
@@ -199,8 +200,8 @@ export default function WaitlistClient() {
                         onClick={() => handleProcessGuest(guest.id, guest.eventId, 'decline')}
                         disabled={isProcessing[guest.id]}
                       >
-                         {isProcessing[guest.id] ? <Activity className="mr-1 h-4 w-4 animate-spin" /> : <UserRoundX className="mr-1 h-4 w-4" />}
-                        Decline
+                         {isProcessing[guest.id] && isProcessing[guest.id] ? <Activity className="mr-1 h-4 w-4 animate-spin" /> : <UserRoundX className="mr-1 h-4 w-4" />}
+                        Decline & Queue Email
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -243,3 +244,5 @@ export default function WaitlistClient() {
     </div>
   );
 }
+
+    

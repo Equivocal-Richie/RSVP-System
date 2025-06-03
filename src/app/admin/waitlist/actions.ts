@@ -1,4 +1,3 @@
-
 "use server";
 
 import { 
@@ -14,11 +13,14 @@ import type {
     EventData, 
     InvitationData, 
     EventForSelector,
-    EmailStatus,
-    EmailType
+    EmailQueuePayload,
+    EmailStatus, // Ensure EmailStatus is imported
+    EmailType // Ensure EmailType is imported
 } from "@/types";
-import { generatePersonalizedInvitation } from '@/ai/flows/generate-invitation-text-flow';
-import { sendInvitationEmail } from '@/lib/emailService'; // Re-use for consistency
+// AI flow is for content generation, which would be used by the (future) worker.
+// import { generatePersonalizedInvitation } from '@/ai/flows/generate-invitation-text-flow';
+// Direct email sending is removed.
+// import { sendInvitationEmail } from '@/lib/emailService'; 
 
 interface WaitlistPageData {
   events: EventForSelector[];
@@ -38,7 +40,8 @@ export async function fetchWaitlistPageData(userId: string, eventId?: string): P
 
     let selectedEventId = eventId;
     if (!selectedEventId && userEvents.length > 0) {
-      selectedEventId = userEvents[0].id; // Default to the most recent event
+      // Default to the most recent event (userEvents is already sorted by date desc)
+      selectedEventId = userEvents[0].id; 
     }
 
     let waitlistedGuests: InvitationData[] = [];
@@ -71,31 +74,31 @@ export async function processAcceptWaitlistGuestAction(
     const invitation = acceptResult.invitation;
 
     if (!event || !invitation) {
-      return { success: false, message: "Failed to retrieve event or invitation details for email." };
+      // This case should be less likely if acceptResult.invitation is present
+      return { success: false, message: "Failed to retrieve event or invitation details for queuing email." };
     }
 
-    // Send 'waitlistAccepted' email
-    const aiEmailContent = await generatePersonalizedInvitation({
-      eventName: event.name,
-      eventDescription: event.description,
-      eventMood: event.mood,
-      guestName: invitation.guestName,
-      emailType: 'waitlistAccepted'
-    });
+    // Queue 'waitlistAccepted' email
+    const emailPayload: EmailQueuePayload = {
+        emailType: 'waitlistAccepted',
+        invitationId: invitation.id,
+        recipient: { name: invitation.guestName, email: invitation.guestEmail },
+        eventId: event.id,
+    };
 
-    const emailResult = await sendInvitationEmail(invitation, event, aiEmailContent, `Update on Your RSVP for ${event.name}`);
-    
+    // SIMULATE ADDING TO QUEUE
+    console.log(`SIMULATING QUEUE: Add payload for waitlist acceptance ${invitation.id}:`, JSON.stringify(emailPayload));
+
     await createEmailLog({
         invitationId: invitation.id,
         eventId: event.id,
         emailAddress: invitation.guestEmail,
-        status: emailResult.success ? 'sent' : 'failed',
-        brevoMessageId: emailResult.messageId,
-        errorMessage: emailResult.error,
-        sentAt: emailResult.success ? new Date().toISOString() : null,
+        emailType: 'waitlistAccepted',
+        status: 'queued',
+        sentAt: null, 
     });
 
-    return { success: true, message: `Guest ${invitation.guestName} accepted and notified.`, updatedInvitation: invitation };
+    return { success: true, message: `Guest ${invitation.guestName} accepted. Notification email queued.`, updatedInvitation: invitation };
 
   } catch (error: any) {
     console.error("Error processing accept waitlist guest action:", error);
@@ -105,7 +108,7 @@ export async function processAcceptWaitlistGuestAction(
 
 export async function processDeclineWaitlistGuestAction(
   invitationId: string,
-  eventId: string // eventId needed to fetch event details for email context
+  eventId: string 
 ): Promise<{ success: boolean; message: string; updatedInvitation?: InvitationData }> {
   try {
     const declineResult = await declineWaitlistedGuest(invitationId);
@@ -113,35 +116,34 @@ export async function processDeclineWaitlistGuestAction(
       return { success: false, message: declineResult.message || "Failed to decline guest from waitlist." };
     }
     
-    const event = await getEventById(eventId); // Fetch event details
+    const event = await getEventById(eventId); 
     const invitation = declineResult.invitation;
 
     if (!event || !invitation) {
-        return { success: false, message: "Failed to retrieve event or invitation details for email." };
+        return { success: false, message: "Failed to retrieve event or invitation details for queuing email." };
     }
 
-    // Send 'waitlistDeclined' email
-    const aiEmailContent = await generatePersonalizedInvitation({
-      eventName: event.name,
-      eventDescription: event.description, // Provide description for context
-      eventMood: event.mood,
-      guestName: invitation.guestName,
-      emailType: 'waitlistDeclined'
-    });
+    // Queue 'waitlistDeclined' email
+    const emailPayload: EmailQueuePayload = {
+        emailType: 'waitlistDeclined',
+        invitationId: invitation.id,
+        recipient: { name: invitation.guestName, email: invitation.guestEmail },
+        eventId: event.id,
+    };
     
-    const emailResult = await sendInvitationEmail(invitation, event, aiEmailContent, `Update on Your Waitlist Status for ${event.name}`);
+    // SIMULATE ADDING TO QUEUE
+    console.log(`SIMULATING QUEUE: Add payload for waitlist decline ${invitation.id}:`, JSON.stringify(emailPayload));
 
     await createEmailLog({
         invitationId: invitation.id,
         eventId: event.id,
         emailAddress: invitation.guestEmail,
-        status: emailResult.success ? 'sent' : 'failed',
-        brevoMessageId: emailResult.messageId,
-        errorMessage: emailResult.error,
-        sentAt: emailResult.success ? new Date().toISOString() : null,
+        emailType: 'waitlistDeclined',
+        status: 'queued',
+        sentAt: null,
     });
     
-    return { success: true, message: `Guest ${invitation.guestName} declined from waitlist and notified.`, updatedInvitation: invitation };
+    return { success: true, message: `Guest ${invitation.guestName} declined. Notification email queued.`, updatedInvitation: invitation };
 
   } catch (error: any) {
     console.error("Error processing decline waitlist guest action:", error);
