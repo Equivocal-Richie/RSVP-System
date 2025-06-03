@@ -21,7 +21,7 @@ The system is built using a modern web stack:
         *   RSVP statistics tabulation.
         *   Event performance analysis (incorporating guest feedback).
 4.  **Email System**:
-    *   **Brevo (formerly Sendinblue)**: Used as the transactional email provider.
+    *   **Brevo**: Used as the transactional email provider.
     *   **Conceptual Email Queueing**: For actions involving multiple emails (e.g., initial event invitations, bulk feedback requests), the system currently **simulates queueing**. Server actions create `emailLog` entries in Firestore with a `'queued'` status and log the intent to send an email.
     *   **Future State (Required for Scale)**: A true background worker system (e.g., Google Cloud Functions triggered by Cloud Tasks or Pub/Sub) is necessary to process these "queued" emails. This worker would handle AI content generation, Brevo API calls (with rate-limiting and retries), and update email logs. OTP emails are sent directly due to their immediate, low-volume nature.
 
@@ -182,11 +182,9 @@ The system is designed with modularity in mind:
 
 ## Developer Details
 
-*   **Author**: Firebase Studio AI Assistant & [Your Name/Handle Here]
-*   **Contact**: [Your Email/Link Here]
+*   **Author**: Richard Muchoki
+*   **Contact**: mrichardmuchoki@gmail.com
 
 ## License
 
-This project is licensed under the **MIT License**. See the `LICENSE` file for details.
-(You would typically add a `LICENSE` file with the MIT license text to the repository root).
-```
+This project is licensed under the **MIT License**.
