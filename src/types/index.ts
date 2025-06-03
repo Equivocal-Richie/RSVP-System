@@ -42,7 +42,7 @@ export interface InvitationData {
   rsvpAt?: TimestampString | null; // ISO string date, from Firestore Timestamp
   originalGuestName?: string; // If admin updates, keep original for reference
   originalGuestEmail?: string; // If admin updates, keep original for reference - stores original case email
-  isPublicOrigin?: boolean; // True if this invitation was created via a public RSVP link
+  isPublicOrigin?: boolean; // True if this invitation was created via a public RSVP link, defaults to false
   createdAt?: TimestampString; // from Firestore Timestamp
   updatedAt?: TimestampString; // from Firestore Timestamp
 }
@@ -117,7 +117,7 @@ export interface AnalyzeEventPerformanceInput {
   confirmedGuests: number;
   seatLimit: number;
   capacityFilledPercentage: number | null;
-  // guestFeedbackSummary?: string; // Future enhancement
+  guestFeedbackSummary?: string; // Now optional, for future enhancement
 }
 
 export interface EventAnalysisOutput {
@@ -131,8 +131,33 @@ export interface UserGuestRow {
   eventId: string;
   eventName: string;
   eventDate: TimestampString;
-  guestId: string;
+  guestId: string; // This is invitationId
   guestName: string;
   guestEmail: string;
   status: RsvpStatus;
+}
+
+// For Event Feedback System
+export interface EventFeedbackData {
+  id: string; // Firestore document ID
+  eventId: string;
+  invitationId: string; // Links to the specific guest's invitation
+  guestNameAtTimeOfFeedback: string; // Name of the guest when they submitted feedback
+  rating: number; // e.g., 1-5
+  likedMost: string;
+  suggestionsForImprovement: string;
+  submittedAt: TimestampString; // from Firestore Timestamp
+}
+
+export interface GenerateFeedbackEmailInput {
+  eventName: string;
+  guestName: string;
+}
+
+export interface GenerateFeedbackEmailOutput {
+  subject: string;
+  greeting: string;
+  body: string;
+  closing: string;
+  fullEmailText: string;
 }

@@ -21,13 +21,13 @@ const AnalyzeEventPerformanceInputSchema = z.object({
   confirmedGuests: z.number().describe('Number of guests who confirmed attendance.'),
   seatLimit: z.number().describe('The seating capacity of the event. 0 or negative means unlimited.'),
   capacityFilledPercentage: z.number().nullable().describe('Percentage of seats filled (if applicable).'),
-  // guestFeedbackSummary: z.string().optional().describe('A summary of guest feedback received post-event.'), // For future use
+  guestFeedbackSummary: z.string().optional().describe('A summary of guest feedback received post-event. This could include common themes, overall sentiment, or specific positive/negative points.'),
 });
 
 const EventAnalysisOutputSchema = z.object({
   insights: z.array(z.string()).describe('Key observations and insights about the event performance.'),
   suggestions: z.array(z.string()).describe('Actionable suggestions to improve future events.'),
-  overallSentiment: z.string().optional().describe('Overall sentiment analysis based on available data (e.g., feedback, attendance patterns).'), // For future use
+  overallSentiment: z.string().optional().describe('Overall sentiment analysis based on available data (e.g., feedback, attendance patterns).'),
 });
 
 const analyzeEventPrompt = ai.definePrompt({
@@ -52,14 +52,16 @@ Guest Feedback Summary:
 {{/if}}
 
 Analysis Task:
-1.  **Insights**: Based on the data, provide 2-3 key insights about the event's performance. Consider aspects like attendance relative to capacity (if applicable). If capacity was low, what might be reasons? If high, what did they do well?
-2.  **Suggestions**: Provide 3-4 concrete, actionable suggestions for the event organizer to improve their next event. These suggestions should be data-driven where possible. For example, if capacity was an issue (too low or too high), suggest strategies. If description is very generic, suggest improving it.
-3.  **Overall Sentiment (Optional for now)**: If guest feedback were available, you would summarize it here. For now, you can omit this or state "Sentiment analysis pending guest feedback data."
+1.  **Insights**: Based on all available data (including guest feedback if provided), provide 2-3 key insights about the event's performance. Consider aspects like attendance relative to capacity, common themes from feedback (e.g., if feedback mentions "great speakers" or "poor catering"). If capacity was low, what might be reasons? If high, what did they do well? How did feedback align with attendance?
+2.  **Suggestions**: Provide 3-4 concrete, actionable suggestions for the event organizer to improve their next event. These suggestions should be data-driven where possible. For example, if feedback highlights issues with venue, suggest considering alternatives. If capacity was an issue, suggest strategies. If description is very generic and attendance was low, suggest improving it. If feedback was overwhelmingly positive about a certain aspect, suggest leveraging that in future promotions.
+3.  **Overall Sentiment (Optional based on feedback)**: If guest feedback was provided, briefly summarize the overall sentiment (e.g., "Largely positive with minor concerns about X", "Mixed, with strong points in Y but issues in Z", "Overwhelmingly positive"). If no feedback, state "Sentiment analysis pending guest feedback data."
 
 Format your response strictly as JSON conforming to the EventAnalysisOutput schema, ensuring 'insights' and 'suggestions' are arrays of strings.
 
-Example Insight: "The event had a moderate capacity fill rate of {{{capacityFilledPercentage}}}%, indicating room for improvement in attracting attendees or adjusting capacity."
-Example Suggestion: "Consider targeted pre-event marketing to boost attendance for events with similar capacity utilization."
+Example Insight (with feedback): "The event achieved a strong {{{capacityFilledPercentage}}}% capacity fill rate, and guest feedback consistently praised the engaging workshop content, indicating this format resonates well with the target audience."
+Example Insight (no feedback): "The event had a moderate capacity fill rate of {{{capacityFilledPercentage}}}%, indicating room for improvement in attracting attendees or adjusting capacity."
+Example Suggestion (with feedback): "Given the positive feedback on the keynote speaker, consider featuring similar high-profile speakers in future events and highlight them in promotional materials."
+Example Suggestion (no feedback): "Consider targeted pre-event marketing to boost attendance for events with similar capacity utilization."
 `,
 });
 

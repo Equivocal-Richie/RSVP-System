@@ -6,8 +6,8 @@ config(); // Ensure .env variables are loaded
 import * as Brevo from '@sendinblue/client';
 import type { EventData, InvitationData } from '@/types';
 
-const SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || "equivocalrichie@gmail.com"; 
-const SENDER_NAME = process.env.BREVO_SENDER_NAME || "RSVP Now"; 
+const SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || "equivocalrichie@gmail.com";
+const SENDER_NAME = process.env.BREVO_SENDER_NAME || "RSVP Now";
 const OTP_EXPIRY_MINUTES = 10; // Consistent with auth/actions.ts
 
 const apiInstance = new Brevo.TransactionalEmailsApi();
@@ -56,7 +56,7 @@ export async function sendInvitationEmail(
   sendSmtpEmail.to = [{ email: invitation.guestEmail, name: invitation.guestName }];
   sendSmtpEmail.sender = { email: SENDER_EMAIL, name: SENDER_NAME };
   sendSmtpEmail.subject = subjectOverride || `You're Invited to ${event.name}!`;
-  
+
   sendSmtpEmail.htmlContent = `
     <html>
       <head>
@@ -64,18 +64,18 @@ export async function sendInvitationEmail(
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
           .container { max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
           .header { font-size: 24px; color: hsl(var(--primary)); } /* Use HSL variable */
-          .button { 
-            display: inline-block; 
-            padding: 10px 20px; 
-            margin: 20px 0; 
+          .button {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 20px 0;
             background-color: hsl(var(--primary)); /* Use HSL variable */
-            color: #FFFFFF !important; 
-            text-decoration: none; 
-            border-radius: 5px; 
+            color: #FFFFFF !important;
+            text-decoration: none;
+            border-radius: 5px;
             font-weight: bold;
           }
           .button-text { /* Ensured high contrast for button text */
-             color: #FFFFFF !important; 
+             color: #FFFFFF !important;
              text-decoration: none;
           }
           .footer { margin-top: 20px; font-size: 0.9em; color: #777; }
@@ -86,19 +86,19 @@ export async function sendInvitationEmail(
           <p class="header">${emailContent.greeting.includes("Invited") || emailContent.greeting.includes("invitation") ? "You're Invited!" : (emailContent.greeting.includes("Great News") || emailContent.greeting.includes("Confirmed") ? "RSVP Confirmed!" : "Update on Your RSVP")}</p>
           <p>${emailContent.greeting || `Hi ${invitation.guestName},`}</p>
           <p>${emailContent.body || `We're excited to share details about ${event.name}.`}</p>
-          
+
           <p><strong>Event:</strong> ${event.name}</p>
           <p><strong>Date:</strong> ${new Date(event.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
           <p><strong>Time:</strong> ${event.time}</p>
           <p><strong>Location:</strong> ${event.location}</p>
-          
+
           ${invitation.status !== 'waitlisted' && invitation.status !== 'declined' ? // Only show RSVP button if not waitlisted or declined from this email
             `<p><a href="${rsvpLink}" class="button"><span class="button-text">Click here to RSVP / View Invitation</span></a></p>
              <p>If the button above doesn't work, please copy and paste the following link into your browser:</p>
              <p><a href="${rsvpLink}">${rsvpLink}</a></p>`
             : ''
           }
-          
+
           <p>${emailContent.closing || 'We hope to see you there!'}</p>
           <div class="footer">
             <p>This email was sent via RSVP Now regarding the event: ${event.name}.</p>
@@ -117,8 +117,8 @@ export async function sendInvitationEmail(
   } catch (error: any) {
     const errorMessage = error.response?.body?.message || JSON.stringify(error.response?.body) || error.message || "Unknown Brevo API error";
     console.error(`Error sending invitation/notification email to ${invitation.guestEmail} via Brevo: `, errorMessage, 'Full error object:', JSON.stringify(error, null, 2));
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: errorMessage
     };
   }
@@ -172,10 +172,38 @@ export async function sendOtpEmail(
   } catch (error: any) {
     const errorMessage = error.response?.body?.message || JSON.stringify(error.response?.body) || error.message || "Unknown Brevo API error";
     console.error(`Error sending OTP email to ${recipientEmail} via Brevo: `, errorMessage, 'Full error object:', JSON.stringify(error, null, 2));
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: errorMessage
     };
   }
 }
-    
+
+export async function sendGenericEmail(
+  recipientEmail: string,
+  recipientName: string,
+  subject: string,
+  htmlContent: string
+): Promise<{ success: boolean; error?: string; messageId?: string }> {
+  if (!brevoApiKeyConfigured) {
+    console.warn("Brevo API Key not configured. Skipping generic email send.");
+    return { success: false, error: "Brevo API Key not configured." };
+  }
+
+  const sendSmtpEmail = new Brevo.SendSmtpEmail();
+  sendSmtpEmail.to = [{ email: recipientEmail, name: recipientName }];
+  sendSmtpEmail.sender = { email: SENDER_EMAIL, name: SENDER_NAME };
+  sendSmtpEmail.subject = subject;
+  sendSmtpEmail.htmlContent = htmlContent; // Assume htmlContent is fully formed HTML
+
+  try {
+    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    const messageId = (data.body as any)?.messageId || (Array.isArray((data.body as any)?.messageId) ? (data.body as any).messageId[0] : undefined);
+    console.log(`Generic email sent successfully to ${recipientEmail}. Subject: "${subject}". Brevo response: ${JSON.stringify(data.body)}`);
+    return { success: true, messageId: messageId };
+  } catch (error: any) {
+    const errorMessage = error.response?.body?.message || JSON.stringify(error.response?.body) || error.message || "Unknown Brevo API error";
+    console.error(`Error sending generic email to ${recipientEmail} via Brevo: `, errorMessage, 'Full error object:', JSON.stringify(error, null, 2));
+    return { success: false, error: errorMessage };
+  }
+}

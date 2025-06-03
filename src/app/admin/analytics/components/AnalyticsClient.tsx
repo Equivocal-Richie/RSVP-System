@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+// import { getFeedbackForEvent } from '@/lib/db'; // For future use to fetch and summarize feedback
 
 export default function AnalyticsClient() {
   const { user, loading: authLoading } = useAuth();
@@ -56,15 +57,30 @@ export default function AnalyticsClient() {
     setAnalyzingEventId(eventRow.eventId);
     setIsAiAnalyzing(true);
     setAiAnalysisResult(null); // Clear previous results
-    
+
+    // In a future step, you would fetch and summarize feedback here:
+    // let guestFeedbackSummary: string | undefined = undefined;
+    // try {
+    //   const feedbackItems = await getFeedbackForEvent(eventRow.eventId); // This DB function needs to exist
+    //   if (feedbackItems.length > 0) {
+    //      // Basic summarization for now, could be an AI call itself for better summary
+    //      guestFeedbackSummary = feedbackItems.map(f => `Rating ${f.rating}/5: ${f.likedMost}. Suggestions: ${f.suggestionsForImprovement || 'None'}`).join('\n---\n');
+    //      if (guestFeedbackSummary.length > 1500) guestFeedbackSummary = guestFeedbackSummary.substring(0, 1500) + "... (feedback truncated)";
+    //   }
+    // } catch (fbError) {
+    //   console.error("Failed to fetch or summarize feedback for AI analysis:", fbError);
+    //   toast({ title: "Feedback Fetch Error", description: "Could not load guest feedback for full analysis.", variant: "default" });
+    // }
+
     const analysisInput: AnalyzeEventPerformanceInput = {
       eventId: eventRow.eventId,
       eventName: eventRow.eventName,
-      eventDescription: "Event description would be fetched or passed here.", // Placeholder
+      eventDescription: "Event description would be fetched or passed here.", // Placeholder - Ideally fetch full event details
       eventDate: eventRow.eventDate,
-      confirmedGuests: eventRow.confirmedGuests, // Added missing field
+      confirmedGuests: eventRow.confirmedGuests,
       seatLimit: eventRow.seatLimit,
       capacityFilledPercentage: eventRow.capacityFilledPercentage,
+      // guestFeedbackSummary: guestFeedbackSummary, // Pass the summary here
     };
 
     const result = await triggerEventAiAnalysis(analysisInput);
@@ -114,7 +130,7 @@ export default function AnalyticsClient() {
       </Alert>
     );
   }
-  
+
   if (analyticsData.length === 0 && !isLoading) {
     return (
       <Card className="text-center shadow-lg">
@@ -162,8 +178,8 @@ export default function AnalyticsClient() {
                   <TableCell>{format(new Date(event.eventDate), "MMM d, yyyy")}</TableCell>
                   <TableCell className="text-center">{event.confirmedGuests}</TableCell>
                   <TableCell className="text-center">
-                    {event.capacityFilledPercentage !== null 
-                      ? `${event.capacityFilledPercentage.toFixed(1)}%` 
+                    {event.capacityFilledPercentage !== null
+                      ? `${event.capacityFilledPercentage.toFixed(1)}%`
                       : (event.seatLimit <=0 ? 'Unlimited' : 'N/A')}
                      {event.seatLimit > 0 && <span className="text-xs text-muted-foreground block">({event.confirmedGuests}/{event.seatLimit})</span>}
                   </TableCell>
@@ -183,9 +199,9 @@ export default function AnalyticsClient() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
+                    <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => handleAiAnalysis(event)}
                         disabled={isAiAnalyzing && analyzingEventId === event.eventId}
                         className="bg-accent text-accent-foreground hover:bg-accent/90"
@@ -259,7 +275,7 @@ export default function AnalyticsClient() {
             <ul className="list-disc pl-5 space-y-1 text-sm">
                 <li><strong>Capacity Filled:</strong> Percentage of available seats filled (if seat limit was set).</li>
                 <li><strong>Change vs Prev.:</strong> Difference in 'Capacity Filled %' compared to the event held immediately before this one (if both had seat limits).</li>
-                <li><strong>AI Analysis:</strong> Click to get AI-powered insights and suggestions for a specific event. (Note: Guest feedback analysis is a future enhancement).</li>
+                <li><strong>AI Analysis:</strong> Click to get AI-powered insights and suggestions for a specific event. (Note: Guest feedback analysis is a future enhancement that will provide richer insights).</li>
             </ul>
           </AlertDescription>
         </Alert>
@@ -276,5 +292,3 @@ export default function AnalyticsClient() {
     </div>
   );
 }
-
-    
