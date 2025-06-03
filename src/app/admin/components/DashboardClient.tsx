@@ -399,9 +399,7 @@ export default function DashboardClient() {
                 <MailWarning className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                 <AlertTitle className="text-amber-700 dark:text-amber-300">Email Sending & Queueing Notice</AlertTitle>
                 <AlertDescription className="text-sm text-amber-600 dark:text-amber-400">
-                    Actions like sending/resending invitations or feedback requests now add emails to a processing queue.
-                    Actual sending happens in the background. Current demo uses Brevo's free tier (limited to {BREVO_DAILY_LIMIT} emails/day).
-                    For future larger events we're going to implement a more robust queueing system and appropriate email plan with worker logic.
+                    Actions like sending/resending invitations or feedback requests now add emails to a processing queue. Actual sending happens in the background. Current demo uses Brevo's free tier (limited to {BREVO_DAILY_LIMIT} emails/day). For future larger events we're going to implement a more robust queueing system and appropriate email plan with worker logic.
                 </AlertDescription>
               </Alert>
               <div className="overflow-x-auto">
@@ -445,13 +443,6 @@ export default function DashboardClient() {
           </Card>
         </>
       ) : null}
-
-      <Card className="shadow-lg">
-        <CardHeader><CardTitle>Developer Notes / TODOs</CardTitle></CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-1">
-            {/* Content removed as per user request */}
-        </CardContent>
-      </Card>
     </div>
   );
 }
