@@ -5,9 +5,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Logo from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
-import { Home, LogIn, Loader2, UserCog, LayoutDashboard } from 'lucide-react';
+import { Home, Loader2, LayoutDashboard } from 'lucide-react'; // Removed LogIn
 import { useAuth } from '@/contexts/AuthContext';
-// Removed useSidebar import as admin sidebar trigger is handled in AdminHeader
 
 const Header = () => {
   const { user, loading: authLoading } = useAuth();
@@ -15,8 +14,6 @@ const Header = () => {
   
   const isAdminRoute = pathname.startsWith('/admin');
 
-  // If on an admin route, this main header will not be rendered.
-  // The admin section has its own AdminHeader within AdminLayout.
   if (isAdminRoute) {
     return null; 
   }
@@ -46,14 +43,13 @@ const Header = () => {
 
           {!authLoading && !user && (
             <Button variant="default" asChild>
-              <Link href="/auth" className="flex items-center space-x-1 sm:space-x-2">
-                <LogIn className="h-4 w-4" />
-                <span className="hidden sm:inline">Sign In / Up</span>
+              <Link href="/auth">
+                Login
               </Link>
             </Button>
           )}
           
-          {!authLoading && user && ( // If logged in, always show Admin Dashboard link (if not on admin page itself)
+          {!authLoading && user && ( 
             <Button variant="outline" asChild>
               <Link href="/admin" className="flex items-center space-x-1 sm:space-x-2">
                 <LayoutDashboard className="h-4 w-4" />
