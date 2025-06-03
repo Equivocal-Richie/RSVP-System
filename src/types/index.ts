@@ -36,12 +36,13 @@ export interface InvitationData {
   uniqueToken: string; // Unique unguessable URL part, indexed
   eventId: string;
   guestName: string;
-  guestEmail: string;
+  guestEmail: string; // Always stored in lowercase
   status: RsvpStatus;
   visited: boolean;
   rsvpAt?: TimestampString | null; // ISO string date, from Firestore Timestamp
   originalGuestName?: string; // If admin updates, keep original for reference
-  originalGuestEmail?: string; // If admin updates, keep original for reference
+  originalGuestEmail?: string; // If admin updates, keep original for reference - stores original case email
+  isPublicOrigin?: boolean; // True if this invitation was created via a public RSVP link
   createdAt?: TimestampString; // from Firestore Timestamp
   updatedAt?: TimestampString; // from Firestore Timestamp
 }
@@ -83,7 +84,7 @@ export interface RsvpStats {
   pending: number;
   declined: number;
   waitlisted: number;
-  totalSeats: number; // 0 or -1 means unlimited
+  totalSeats: number; // 0 means unlimited for display purposes
   availableSeats: number; // Meaningful only if totalSeats > 0
 }
 
