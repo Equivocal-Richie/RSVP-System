@@ -46,12 +46,12 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, descripti
 );
 
 const rsvpChartConfig = {
-  guests: { label: "Guests" }, 
-  Confirmed: { label: "Confirmed", color: "hsl(var(--chart-2))" }, 
-  Pending: { label: "Pending", color: "hsl(var(--chart-4))" }, 
-  Declined: { label: "Declined", color: "hsl(var(--destructive))" }, 
-  Waitlisted: { label: "Waitlisted", color: "hsl(var(--chart-5))" }, 
-  ToRemindAI: { label: "To Remind (AI)", color: "hsl(var(--chart-1))" }, 
+  guests: { label: "Guests" },
+  Confirmed: { label: "Confirmed", color: "hsl(var(--chart-2))" },
+  Pending: { label: "Pending", color: "hsl(var(--chart-4))" },
+  Declined: { label: "Declined", color: "hsl(var(--destructive))" },
+  Waitlisted: { label: "Waitlisted", color: "hsl(var(--chart-5))" },
+  ToRemindAI: { label: "To Remind (AI)", color: "hsl(var(--chart-1))" },
 } satisfies RechartsPrimitive.ChartConfig;
 
 const BREVO_DAILY_LIMIT = 300;
@@ -71,9 +71,9 @@ export default function DashboardClient() {
 
   useEffect(() => {
     async function loadData() {
-      if (authLoading) return; 
+      if (authLoading) return;
       if (!user) {
-        setIsLoading(false); 
+        setIsLoading(false);
         setCurrentEvent(null);
         setStats(null);
         setInvitations([]);
@@ -140,11 +140,11 @@ export default function DashboardClient() {
         return;
     }
 
-    setIsAiLoading(true); 
-    const result = await resendInvitations(guestsToRemindInvitationIds); 
-    toast({ 
-      title: result.success ? "Invitations Queued" : "Error", 
-      description: result.message, 
+    setIsAiLoading(true);
+    const result = await resendInvitations(guestsToRemindInvitationIds);
+    toast({
+      title: result.success ? "Invitations Queued" : "Error",
+      description: result.message,
       variant: result.success ? "default" : "destructive",
       duration: result.success ? 5000 : 8000
     });
@@ -191,7 +191,7 @@ export default function DashboardClient() {
         toast({
             title: "Feedback Requests Queued",
             description: result.message, // Message now explains queuing and limits
-            duration: 10000, 
+            duration: 10000,
         });
     } else {
         toast({
@@ -202,7 +202,7 @@ export default function DashboardClient() {
     }
     setIsSendingFeedback(false);
   };
-  
+
   if (isLoading || authLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -212,20 +212,20 @@ export default function DashboardClient() {
   }
 
   const confirmedPercentage = stats && stats.totalSeats > 0 ? (stats.confirmed / stats.totalSeats) * 100 : 0;
-  
+
   const getBadgeVariant = (status: RsvpStatus): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
-      case 'confirmed': return 'default'; 
+      case 'confirmed': return 'default';
       case 'declining': return 'destructive';
       case 'pending': return 'secondary';
-      case 'waitlisted': return 'outline'; 
+      case 'waitlisted': return 'outline';
       default: return 'secondary';
     }
   };
    const getBadgeClassName = (status: RsvpStatus) => {
     switch (status) {
       case 'confirmed': return 'bg-green-500 hover:bg-green-600 text-white';
-      case 'declining': return ''; 
+      case 'declining': return '';
       case 'pending': return 'bg-gray-400 hover:bg-gray-500 text-white';
       case 'waitlisted': return 'bg-yellow-500 hover:bg-yellow-600 text-black border-yellow-600';
       default: return '';
@@ -251,7 +251,7 @@ export default function DashboardClient() {
           </Link>
         </Button>
       </div>
-      
+
       {!user ? (
         <Card className="shadow-lg">
           <CardHeader><CardTitle>Not Authenticated</CardTitle></CardHeader>
@@ -282,7 +282,7 @@ export default function DashboardClient() {
             <StatCard title="Waitlisted" value={stats.waitlisted} icon={Clock} description="Guests on the waitlist." className="bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700"/>
           </div>
 
-          {stats.totalSeats > 0 && ( 
+          {stats.totalSeats > 0 && (
             <Card className="shadow-lg">
               <CardHeader>
                 <CardTitle>Event Capacity</CardTitle>
@@ -308,8 +308,8 @@ export default function DashboardClient() {
                   <ChartContainer config={rsvpChartConfig} className="h-full w-full">
                     <RechartsPrimitive.BarChart
                       data={rsvpChartData}
-                      layout="horizontal" 
-                      margin={{ top: 5, right: 20, left: 5, bottom: 20 }} 
+                      layout="horizontal"
+                      margin={{ top: 5, right: 20, left: 5, bottom: 20 }}
                     >
                       <RechartsPrimitive.CartesianGrid strokeDasharray="3 3" vertical={false}/>
                       <RechartsPrimitive.XAxis
@@ -318,7 +318,7 @@ export default function DashboardClient() {
                         axisLine={false}
                         tickMargin={8}
                         tickFormatter={(value) => rsvpChartConfig[value as keyof typeof rsvpChartConfig]?.label || value}
-                        interval={0} 
+                        interval={0}
                       />
                       <RechartsPrimitive.YAxis dataKey="guests" tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false}/>
                       <ChartTooltip
@@ -336,7 +336,7 @@ export default function DashboardClient() {
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-8">No data available for chart yet. Load event data or run AI tabulation.</p>
               )}
-              
+
               <div className="flex space-x-4">
                 <Button onClick={handleAiTabulation} disabled={isAiLoading || !currentEvent}>
                   <BarChart3 className="mr-2 h-4 w-4" /> {isAiLoading && !aiSummary ? 'Analyzing...' : 'Run AI Tabulation'}
@@ -369,7 +369,7 @@ export default function DashboardClient() {
               )}
             </CardContent>
           </Card>
-          
+
           <Card className="shadow-lg">
             <CardHeader>
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
@@ -378,14 +378,14 @@ export default function DashboardClient() {
                     <CardDescription>Overview of all invited guests and their RSVP status for the current event.</CardDescription>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                    <Button 
-                        onClick={handleSendFeedbackRequests} 
-                        variant="outline" 
-                        size="sm" 
+                    <Button
+                        onClick={handleSendFeedbackRequests}
+                        variant="outline"
+                        size="sm"
                         disabled={!currentEvent || !stats || stats.confirmed === 0 || isSendingFeedback}
                         className="w-full sm:w-auto"
                     >
-                      <Layers className="mr-2 h-4 w-4" /> 
+                      <Layers className="mr-2 h-4 w-4" />
                       {isSendingFeedback ? 'Queuing Feedback Requests...' : `Queue Feedback Requests (${stats?.confirmed || 0} confirmed)`}
                     </Button>
                     <Button onClick={handleExportCsv} variant="outline" size="sm" disabled={!currentEvent} className="w-full sm:w-auto">
@@ -400,8 +400,8 @@ export default function DashboardClient() {
                 <AlertTitle className="text-amber-700 dark:text-amber-300">Email Sending & Queueing Notice</AlertTitle>
                 <AlertDescription className="text-sm text-amber-600 dark:text-amber-400">
                     Actions like sending/resending invitations or feedback requests now add emails to a processing queue.
-                    Actual sending happens in the background. Current demo uses Brevo's free tier (limited to {BREVO_DAILY_LIMIT} emails/day). 
-                    For large events, a robust queueing system and appropriate email plan are critical.
+                    Actual sending happens in the background. Current demo uses Brevo's free tier (limited to {BREVO_DAILY_LIMIT} emails/day).
+                    For future larger events we're going to implement a more robust queueing system and appropriate email plan with worker logic.
                 </AlertDescription>
               </Alert>
               <div className="overflow-x-auto">
@@ -422,8 +422,8 @@ export default function DashboardClient() {
                         <TableCell>{inv.guestName}</TableCell>
                         <TableCell>{inv.guestEmail}</TableCell>
                         <TableCell>
-                          <Badge 
-                            variant={getBadgeVariant(inv.status)} 
+                          <Badge
+                            variant={getBadgeVariant(inv.status)}
                             className={cn(getBadgeClassName(inv.status))}
                           >
                             {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
@@ -445,7 +445,7 @@ export default function DashboardClient() {
           </Card>
         </>
       ) : null}
-      
+
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Developer Notes / TODOs</CardTitle></CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-1">
@@ -458,5 +458,3 @@ export default function DashboardClient() {
     </div>
   );
 }
-
-    
