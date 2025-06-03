@@ -60,8 +60,7 @@ async function HomePageContent() {
             <CardContent>
               <Button asChild className="w-full">
                 <Link href="/auth">
-                  <LogIn className="mr-2 h-5 w-5" />
-                  Create Event / Sign In
+                  Create Event
                 </Link>
               </Button>
               <p className="mt-2 text-sm text-muted-foreground">Access statistics and guest management tools after signing in.</p>
