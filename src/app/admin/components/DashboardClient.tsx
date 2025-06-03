@@ -449,10 +449,7 @@ export default function DashboardClient() {
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Developer Notes / TODOs</CardTitle></CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-1">
-            <p>• <strong>Firestore Setup:</strong> Ensure Firebase Admin SDK is configured. Composite indexes might be needed (check server logs for links). Events, Invitations, and Feedback collections have specific index requirements mentioned in `db.ts` comments.</p>
-            <p>• <strong>Email Queueing:</strong> Critical for >300 guests. Current implementation queues emails conceptually (logs to console & DB status 'queued'). Production requires real queue (Cloud Tasks/PubSub) & worker functions.</p>
-            <p>• <strong>Feedback System:</strong> Feedback form & storage in place. Feedback summary for AI analysis uses simple concatenation; could be enhanced with an AI summarization flow.</p>
-            <p>• <strong>Waitlist Management:</strong> UI and accept/decline logic implemented. Emails are queued.</p>
+            {/* Content removed as per user request */}
         </CardContent>
       </Card>
     </div>
