@@ -5,22 +5,21 @@ import React, { useEffect } from "react";
 import {
   SidebarProvider,
   Sidebar,
-  SidebarHeader,
+  SidebarHeader as OriginalSidebarHeader, // Renamed to avoid conflict if needed locally
   SidebarContent,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarFooter,
   SidebarInset,
-  ExternalSidebarTrigger, // This is the trigger from sidebar.tsx to be used in AdminHeader
+  SidebarTrigger, // Correctly importing SidebarTrigger
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
-import { LayoutDashboard, BarChart3, Users, LogOut, PanelLeft, X, Settings, CalendarPlus, UserCog, ListChecks, UserRoundCheck, UserRoundX } from "lucide-react";
+import { LayoutDashboard, BarChart3, Users, LogOut, PanelLeft, X, Settings, CalendarPlus, UserCog, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/icons/Logo";
-import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { usePathname, useRouter } from 'next/navigation';
@@ -28,7 +27,7 @@ import { signOut as firebaseSignOut } from 'firebase/auth';
 import { auth as firebaseClientAuth } from '@/lib/firebaseClient';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { SheetClose } from "@/components/ui/sheet"; // Import SheetClose
+import { SheetClose } from "@/components/ui/sheet"; // Keep SheetClose for direct use if needed
 
 const AdminNavItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -39,52 +38,37 @@ const AdminNavItems = [
   // { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
-
+// Internal component for sidebar structure
 function AdminSidebarInternalContent() {
-  const { setSheetOpen, isDesktopOpen, isMobile } = useSidebar();
+  const { isSheetOpen, setSheetOpen } = useSidebar();
   const pathname = usePathname();
 
   const handleLinkClick = () => {
-    if (isMobile) { // Only close sheet sidebar on mobile after link click
-      setSheetOpen(false);
-    }
+    setSheetOpen(false); // Close sheet on link click
   };
 
   return (
     <>
-      <SidebarHeader className={cn("px-3 h-16 flex items-center justify-between", isDesktopOpen ? "justify-between" : "justify-center")}>
-        <Link href="/admin" className={cn("flex items-center gap-2 transition-opacity duration-300 text-sidebar-foreground hover:opacity-80", !isDesktopOpen && "justify-center w-full")} onClick={handleLinkClick}>
-          <Logo className={cn("h-8 w-auto", !isDesktopOpen && "h-7 w-7")} />
+      <OriginalSidebarHeader className="h-16 flex items-center justify-between px-3">
+        <Link href="/admin" className="flex items-center gap-2 text-sidebar-foreground hover:opacity-80" onClick={handleLinkClick}>
+          <Logo className="h-8 w-auto" />
         </Link>
-        {/* Desktop toggle is in AdminHeader, Mobile close button is part of SheetContent by default or handled by SheetClose */}
-      </SidebarHeader>
+        {/* OriginalSidebarHeader in sidebar.tsx handles its own close for Sheet variant */}
+      </OriginalSidebarHeader>
       <SidebarContent>
         <SidebarMenu>
           {AdminNavItems.map((item) => (
             <SidebarMenuItem key={item.href}>
-               <TooltipProvider delayDuration={100}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <SidebarMenuButton
-                        asChild
-                        isActive={pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href))}
-                        onClick={handleLinkClick}
-                        isCollapsed={!isDesktopOpen}
-                        className={cn(!isDesktopOpen && "justify-center")}
-                    >
-                        <Link href={item.href} className="flex items-center">
-                        <item.icon className="size-5 shrink-0" />
-                        {isDesktopOpen && <span className="ml-3 truncate">{item.label}</span>}
-                        </Link>
-                    </SidebarMenuButton>
-                  </TooltipTrigger>
-                  {!isDesktopOpen && (
-                    <TooltipContent side="right" className="bg-sidebar-accent text-sidebar-accent-foreground border-sidebar-border">
-                      <p>{item.label}</p>
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-              </TooltipProvider>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href))}
+                onClick={handleLinkClick}
+              >
+                <Link href={item.href} className="flex items-center">
+                  <item.icon className="size-5 shrink-0" />
+                  <span className="ml-3 truncate">{item.label}</span>
+                </Link>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
         </SidebarMenu>
@@ -101,15 +85,15 @@ function UserProfileSection() {
   const { toast } = useToast();
   const router = useRouter();
   const [isSigningOut, setIsSigningOut] = React.useState(false);
-  const { setSheetOpen, isDesktopOpen, isMobile } = useSidebar();
+  const { setSheetOpen } = useSidebar();
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
     try {
       await firebaseSignOut(firebaseClientAuth);
       toast({ title: "Signed Out", description: "You have been successfully signed out." });
-      if (isMobile) setSheetOpen(false);
-      router.push('/'); // Redirect to home after sign out
+      setSheetOpen(false);
+      router.push('/');
     } catch (error) {
       console.error("Sign out error:", error);
       toast({ title: "Sign Out Error", description: "Failed to sign out. Please try again.", variant: "destructive" });
@@ -124,20 +108,18 @@ function UserProfileSection() {
   const userAvatarFallback = (user.displayName?.substring(0, 1) || user.email?.substring(0,1) || "U").toUpperCase();
 
   return (
-    <div className={cn("flex flex-col items-center gap-2 w-full p-2 border-t border-sidebar-border")}>
-      <div className={cn("flex items-center gap-3 w-full", !isDesktopOpen && "justify-center")}>
+    <div className="flex flex-col items-center gap-2 w-full p-3 border-t border-sidebar-border">
+      <div className="flex items-center gap-3 w-full">
         <Avatar className="h-9 w-9 border-2 border-sidebar-primary shrink-0">
           <AvatarImage src={user.photoURL || undefined} alt={userDisplayName} data-ai-hint="profile animal" />
           <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground font-semibold">
             {userAvatarFallback}
           </AvatarFallback>
         </Avatar>
-        {isDesktopOpen && (
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-sidebar-foreground truncate" title={userDisplayName}>{userDisplayName}</p>
-            {/* Email removed as per request */}
-          </div>
-        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-sidebar-foreground truncate" title={userDisplayName}>{userDisplayName}</p>
+          {/* Email removed as per previous request */}
+        </div>
         <TooltipProvider delayDuration={100}>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -152,7 +134,7 @@ function UserProfileSection() {
                 <LogOut className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
-             <TooltipContent side={isDesktopOpen ? "right" : "top"} align="center" className="bg-sidebar-accent text-sidebar-accent-foreground border-sidebar-border">
+            <TooltipContent side="right" align="center" className="bg-sidebar-accent text-sidebar-accent-foreground border-sidebar-border">
               <p>{isSigningOut ? "Signing out..." : "Sign Out"}</p>
             </TooltipContent>
           </Tooltip>
@@ -162,30 +144,28 @@ function UserProfileSection() {
   );
 }
 
-
-// AdminHeader component to house the trigger and page title
-function AdminHeader() {
-  const { isSheetOpen } = useSidebar(); // For mobile sheet state
+// Dedicated header for the admin section
+const AdminHeader = () => {
+  const { isSheetOpen } = useSidebar(); // Using context to know sheet state for ARIA label
   const pathname = usePathname();
 
   const currentNavItem = AdminNavItems.find(item => {
     if (item.href === "/admin") return pathname === "/admin";
     return item.href !== "/admin" && pathname.startsWith(item.href);
   });
-  const pageTitle = currentNavItem?.label || (pathname === "/admin" ? "Dashboard" : "Admin");
+  const pageTitle = currentNavItem?.label || (pathname === "/admin" ? "Dashboard" : "Admin Section");
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-background px-4 md:px-6 shadow-sm shrink-0">
       <div className="flex items-center gap-2">
-        {/* ExternalSidebarTrigger is used here to control the sidebar */}
-        <ExternalSidebarTrigger aria-label={isSheetOpen ? "Close navigation menu" : "Open navigation menu"} />
+        {/* This SidebarTrigger now correctly uses the imported 'SidebarTrigger' */}
+        <SidebarTrigger aria-label={isSheetOpen ? "Close navigation menu" : "Open navigation menu"} />
         <h1 className="text-lg font-semibold text-foreground">{pageTitle}</h1>
       </div>
-      {/* Placeholder for other header items if needed */}
+      {/* Other header items like user menu or global actions can go here if needed */}
     </header>
   );
-}
-
+};
 
 export default function AdminLayout({
   children,
@@ -194,14 +174,14 @@ export default function AdminLayout({
 }) {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!authLoading && !user) {
-      // Store the intended redirect path before navigating to /auth
-      const currentPath = window.location.pathname + window.location.search;
+      const currentPath = pathname + window.location.search;
       router.replace('/auth?redirect=' + encodeURIComponent(currentPath));
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, pathname]);
 
   if (authLoading) {
     return (
@@ -215,9 +195,7 @@ export default function AdminLayout({
     );
   }
 
-  // If still no user after loading and we are on an admin path, means redirect should have happened or is in progress.
-  // Showing minimal UI to prevent flashing admin content before redirect.
-  if (!user && typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+  if (!user && pathname.startsWith('/admin')) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background">
         <p className="text-lg text-muted-foreground">Redirecting to login...</p>
@@ -225,19 +203,17 @@ export default function AdminLayout({
     );
   }
   
-  // If not an admin path or user is finally loaded, proceed.
-  // Final check to ensure user is present before rendering admin content.
   if (!user) return null;
-
 
   return (
     <SidebarProvider>
       <div className="flex min-h-screen bg-muted/40 dark:bg-muted/10">
-        <Sidebar>
+        <Sidebar> {/* This is now always a Sheet based on latest sidebar.tsx logic */}
           <AdminSidebarInternalContent />
         </Sidebar>
 
-        <SidebarInset className="flex flex-col flex-1 overflow-x-hidden">
+        {/* Main content area that takes remaining space */}
+        <SidebarInset className="flex flex-col flex-1 overflow-x-hidden"> {/* Ensure SidebarInset takes full height and flexes */}
           <AdminHeader />
           <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
             {children}
