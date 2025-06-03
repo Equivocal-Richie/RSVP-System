@@ -1,9 +1,10 @@
 
 "use server";
 
-import { getEventById, getAllInvitationsForEvent, getEventStats, getMostRecentEventIdForUser } from "@/lib/db";
+import { getAllInvitationsForEvent, getEventStats, getMostRecentEventIdForUser, getEventById } from "@/lib/db";
 import { tabulateRsvpStats, type TabulateRsvpStatsInput, type TabulateRsvpStatsOutput } from "@/ai/flows/tabulate-rsvps";
 import type { InvitationData, RsvpStats, EventData } from "@/types";
+import { sendFeedbackRequestEmailAction } from "@/app/feedback/actions"; // Import the action
 
 export async function fetchAdminDashboardData(userId: string | null): Promise<{
   event: EventData | null;
@@ -35,7 +36,7 @@ export async function fetchAdminDashboardData(userId: string | null): Promise<{
   }
 
   const event = await getEventById(recentEventId);
-  if (!event) { // Added check if event fetch fails for some reason
+  if (!event) { 
     return {
       event: null,
       stats: null,
@@ -106,4 +107,61 @@ export async function resendInvitations(guestUniqueTokens: string[]): Promise<{ 
   // 2. Call your email sending service for each.
   // 3. Update email logs.
   return { success: true, message: `Queued ${guestUniqueTokens.length} invitations for re-sending (simulated).` };
+}
+
+export async function triggerSendFeedbackRequestsAction(eventId: string): Promise<{
+  success: boolean;
+  message: string;
+  attemptedCount?: number;
+  successfulCount?: number;
+  failedCount?: number;
+}> {
+  if (!eventId) {
+    return { success: false, message: "Event ID is required." };
+  }
+
+  try {
+    const invitations = await getAllInvitationsForEvent(eventId);
+    const confirmedInvitations = invitations.filter(inv => inv.status === 'confirmed');
+
+    if (confirmedInvitations.length === 0) {
+      return { success: true, message: "No confirmed guests found for this event to send feedback requests to." };
+    }
+
+    let successfulCount = 0;
+    let failedCount = 0;
+
+    // Simulate queuing by iterating. In production, this would add to a Cloud Task/PubSub queue.
+    for (const inv of confirmedInvitations) {
+      try {
+        // Assuming sendFeedbackRequestEmailAction is designed to handle one invitationId
+        const result = await sendFeedbackRequestEmailAction(inv.id);
+        if (result.success) {
+          successfulCount++;
+        } else {
+          failedCount++;
+          console.warn(`Failed to queue/send feedback request for invitation ${inv.id}: ${result.message}`);
+        }
+      } catch (loopError) {
+        failedCount++;
+        console.error(`Error in loop for feedback request, invitation ${inv.id}:`, loopError);
+      }
+    }
+    
+    let summaryMessage = `Attempted to send ${confirmedInvitations.length} feedback request emails. `;
+    summaryMessage += `Successful: ${successfulCount}, Failed: ${failedCount}. `;
+    summaryMessage += `(Note: This is a simulation. True bulk sending requires a queueing system. Be mindful of daily email limits like Brevo's 300/day free tier.)`;
+
+    return {
+      success: true,
+      message: summaryMessage,
+      attemptedCount: confirmedInvitations.length,
+      successfulCount,
+      failedCount,
+    };
+
+  } catch (error: any) {
+    console.error(`Error triggering feedback requests for event ${eventId}:`, error);
+    return { success: false, message: error.message || "Failed to trigger feedback requests." };
+  }
 }

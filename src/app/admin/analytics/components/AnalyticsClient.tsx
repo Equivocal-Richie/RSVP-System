@@ -1,9 +1,8 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchEventAnalyticsData, triggerEventAiAnalysis } from '../actions';
+import { fetchEventAnalyticsData, triggerEventAiAnalysis, fetchAndPrepareFeedbackSummary } from '../actions';
 import type { EventAnalyticRow, AnalyzeEventPerformanceInput, EventAnalysisOutput } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from "@/components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +12,6 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-// import { getFeedbackForEvent } from '@/lib/db'; // For future use to fetch and summarize feedback
 
 export default function AnalyticsClient() {
   const { user, loading: authLoading } = useAuth();
@@ -56,31 +54,31 @@ export default function AnalyticsClient() {
   const handleAiAnalysis = async (eventRow: EventAnalyticRow) => {
     setAnalyzingEventId(eventRow.eventId);
     setIsAiAnalyzing(true);
-    setAiAnalysisResult(null); // Clear previous results
+    setAiAnalysisResult(null); 
 
-    // In a future step, you would fetch and summarize feedback here:
-    // let guestFeedbackSummary: string | undefined = undefined;
-    // try {
-    //   const feedbackItems = await getFeedbackForEvent(eventRow.eventId); // This DB function needs to exist
-    //   if (feedbackItems.length > 0) {
-    //      // Basic summarization for now, could be an AI call itself for better summary
-    //      guestFeedbackSummary = feedbackItems.map(f => `Rating ${f.rating}/5: ${f.likedMost}. Suggestions: ${f.suggestionsForImprovement || 'None'}`).join('\n---\n');
-    //      if (guestFeedbackSummary.length > 1500) guestFeedbackSummary = guestFeedbackSummary.substring(0, 1500) + "... (feedback truncated)";
-    //   }
-    // } catch (fbError) {
-    //   console.error("Failed to fetch or summarize feedback for AI analysis:", fbError);
-    //   toast({ title: "Feedback Fetch Error", description: "Could not load guest feedback for full analysis.", variant: "default" });
-    // }
+    let guestFeedbackSummary: string | undefined = undefined;
+    try {
+      // Fetch and prepare feedback summary
+      guestFeedbackSummary = await fetchAndPrepareFeedbackSummary(eventRow.eventId);
+      if (guestFeedbackSummary) {
+        toast({ title: "Feedback Loaded", description: "Guest feedback summary prepared for AI analysis.", variant: "default", duration: 2000 });
+      }
+    } catch (fbError: any) {
+      console.error("Failed to fetch or summarize feedback for AI analysis:", fbError);
+      toast({ title: "Feedback Fetch Error", description: `Could not load guest feedback: ${fbError.message}`, variant: "default" });
+    }
 
     const analysisInput: AnalyzeEventPerformanceInput = {
       eventId: eventRow.eventId,
       eventName: eventRow.eventName,
-      eventDescription: "Event description would be fetched or passed here.", // Placeholder - Ideally fetch full event details
+      // TODO: Fetch full event details to get a proper description for better analysis
+      // For now, the AI flow is designed to handle a placeholder or generic description.
+      eventDescription: "Event description would ideally be fetched here. Consider aspects like event goals, target audience, and key activities.", 
       eventDate: eventRow.eventDate,
       confirmedGuests: eventRow.confirmedGuests,
       seatLimit: eventRow.seatLimit,
       capacityFilledPercentage: eventRow.capacityFilledPercentage,
-      // guestFeedbackSummary: guestFeedbackSummary, // Pass the summary here
+      guestFeedbackSummary: guestFeedbackSummary,
     };
 
     const result = await triggerEventAiAnalysis(analysisInput);
@@ -156,7 +154,7 @@ export default function AnalyticsClient() {
             Event Performance Analytics
           </CardTitle>
           <CardDescription>
-            Review metrics for your past events to understand engagement and success. Use AI for deeper insights.
+            Review metrics for your past events. Use AI to analyze performance, incorporating guest feedback for deeper insights and suggestions.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -233,9 +231,15 @@ export default function AnalyticsClient() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {aiAnalysisResult.overallSentiment && (
+                <div>
+                    <h3 className="font-semibold text-lg flex items-center mb-1">Overall Sentiment:</h3>
+                    <p className="text-sm text-muted-foreground italic">{aiAnalysisResult.overallSentiment}</p>
+                </div>
+            )}
             {aiAnalysisResult.insights && aiAnalysisResult.insights.length > 0 && (
               <div>
-                <h3 className="font-semibold text-lg flex items-center mb-2"><TrendingUp className="mr-2 h-5 w-5 text-primary"/>Insights:</h3>
+                <h3 className="font-semibold text-lg flex items-center mt-3 mb-2"><TrendingUp className="mr-2 h-5 w-5 text-primary"/>Key Insights:</h3>
                 <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
                   {aiAnalysisResult.insights.map((insight, index) => <li key={`insight-${index}`}>{insight}</li>)}
                 </ul>
@@ -243,20 +247,14 @@ export default function AnalyticsClient() {
             )}
             {aiAnalysisResult.suggestions && aiAnalysisResult.suggestions.length > 0 && (
                <div>
-                <h3 className="font-semibold text-lg flex items-center mt-4 mb-2"><Sparkles className="mr-2 h-5 w-5 text-primary"/>Suggestions:</h3>
+                <h3 className="font-semibold text-lg flex items-center mt-4 mb-2"><Sparkles className="mr-2 h-5 w-5 text-primary"/>Actionable Suggestions:</h3>
                 <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
                   {aiAnalysisResult.suggestions.map((suggestion, index) => <li key={`suggestion-${index}`}>{suggestion}</li>)}
                 </ul>
               </div>
             )}
-            {aiAnalysisResult.overallSentiment && (
-                <div>
-                    <h3 className="font-semibold text-lg flex items-center mt-4 mb-2">Overall Sentiment:</h3>
-                    <p className="text-sm text-muted-foreground">{aiAnalysisResult.overallSentiment}</p>
-                </div>
-            )}
-             {(!aiAnalysisResult.insights || aiAnalysisResult.insights.length === 0) && (!aiAnalysisResult.suggestions || aiAnalysisResult.suggestions.length === 0) && (
-                <p className="text-sm text-muted-foreground">AI analysis did not return specific insights or suggestions for this event.</p>
+             {(!aiAnalysisResult.insights || aiAnalysisResult.insights.length === 0) && (!aiAnalysisResult.suggestions || aiAnalysisResult.suggestions.length === 0) && !aiAnalysisResult.overallSentiment && (
+                <p className="text-sm text-muted-foreground">AI analysis did not return specific insights or suggestions for this event. This might be due to limited input data or no guest feedback being available.</p>
              )}
           </CardContent>
         </Card>
@@ -264,7 +262,7 @@ export default function AnalyticsClient() {
        {isAiAnalyzing && analyzingEventId && (
          <div className="flex justify-center items-center h-32 mt-6">
             <Activity className="h-8 w-8 animate-spin text-primary" />
-            <span className="ml-3 text-muted-foreground">AI is analyzing, please wait...</span>
+            <span className="ml-3 text-muted-foreground">AI is analyzing event data and feedback, please wait...</span>
          </div>
        )}
 
@@ -275,7 +273,7 @@ export default function AnalyticsClient() {
             <ul className="list-disc pl-5 space-y-1 text-sm">
                 <li><strong>Capacity Filled:</strong> Percentage of available seats filled (if seat limit was set).</li>
                 <li><strong>Change vs Prev.:</strong> Difference in 'Capacity Filled %' compared to the event held immediately before this one (if both had seat limits).</li>
-                <li><strong>AI Analysis:</strong> Click to get AI-powered insights and suggestions for a specific event. (Note: Guest feedback analysis is a future enhancement that will provide richer insights).</li>
+                <li><strong>AI Analysis:</strong> Click to get AI-powered insights. The analysis now attempts to incorporate any submitted guest feedback for richer, more contextual suggestions.</li>
             </ul>
           </AlertDescription>
         </Alert>

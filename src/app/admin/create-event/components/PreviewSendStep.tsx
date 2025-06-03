@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Mail, Info, Sparkles, RefreshCw } from 'lucide-react';
+import { Mail, Info, Sparkles, RefreshCw, MailWarning } from 'lucide-react';
 import type { CreateEventFormData } from './CreateEventWizard';
 import { generatePersonalizedInvitationText, type GenerateInvitationTextClientInput, type GenerateInvitationTextClientOutput } from '../actions';
 import type { GuestInput, EventMood } from '@/types';
@@ -18,6 +18,7 @@ interface PreviewSendStepProps {
   eventData: Partial<CreateEventFormData>; 
   guestList: GuestInput[];
 }
+const BREVO_DAILY_LIMIT = 300; // For display
 
 export function PreviewSendStep({ eventData, guestList }: PreviewSendStepProps) {
   const [sampleEmail, setSampleEmail] = useState<GenerateInvitationTextClientOutput | null>(null);
@@ -64,14 +65,14 @@ export function PreviewSendStep({ eventData, guestList }: PreviewSendStepProps) 
       toast({ title: "Preview Error", description: "An unexpected error occurred.", variant: "destructive" });
     } finally {
       setIsLoadingPreview(false);
-      setIsAdjustDialogOpen(false); // Close dialog after attempting fetch
+      setIsAdjustDialogOpen(false); 
     }
   };
 
   useEffect(() => {
-    fetchSampleEmail(); // Fetch initial preview
+    fetchSampleEmail(); 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventData.name, eventData.description, eventData.mood, firstGuest?.name]); // Only re-run initial fetch if core data changes
+  }, [eventData.name, eventData.description, eventData.mood, firstGuest?.name]); 
 
   const handleAdjustSubmit = () => {
     fetchSampleEmail(adjustmentInstructions);
@@ -172,10 +173,10 @@ export function PreviewSendStep({ eventData, guestList }: PreviewSendStepProps) 
       </Card>
       <Alert variant="destructive">
         <Info className="h-4 w-4" />
-        <AlertTitle>Important Note</AlertTitle>
+        <AlertTitle>Important: Email Sending</AlertTitle>
         <AlertDescription>
-          Clicking "Create Event & Prepare Invitations" will finalize the event details, create unique RSVP links for all guests, and add them to the database.
-          The actual sending of emails will be handled by a separate process. Unique invitation links will be of the format: <code>https://your-app-domain/rsvp/unique-token</code>.
+          Clicking "Create Event & Prepare Invitations" will finalize event details, create unique RSVP links, and attempt to send invitation emails.
+          Please be aware of daily sending limits (e.g., Brevo free tier: {BREVO_DAILY_LIMIT} emails/day). For large guest lists, a proper email queueing system (not implemented in this demo) is essential.
         </AlertDescription>
       </Alert>
     </div>

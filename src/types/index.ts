@@ -42,7 +42,7 @@ export interface InvitationData {
   rsvpAt?: TimestampString | null; // ISO string date, from Firestore Timestamp
   originalGuestName?: string; // If admin updates, keep original for reference
   originalGuestEmail?: string; // If admin updates, keep original for reference - stores original case email
-  isPublicOrigin?: boolean; // True if this invitation was created via a public RSVP link, defaults to false
+  isPublicOrigin?: boolean; // True if this invitation was created via a public RSVP link, defaults to false.
   createdAt?: TimestampString; // from Firestore Timestamp
   updatedAt?: TimestampString; // from Firestore Timestamp
 }
@@ -117,7 +117,7 @@ export interface AnalyzeEventPerformanceInput {
   confirmedGuests: number;
   seatLimit: number;
   capacityFilledPercentage: number | null;
-  guestFeedbackSummary?: string; // Now optional, for future enhancement
+  guestFeedbackSummary?: string;
 }
 
 export interface EventAnalysisOutput {
@@ -160,4 +160,15 @@ export interface GenerateFeedbackEmailOutput {
   body: string;
   closing: string;
   fullEmailText: string;
+}
+
+// For Waitlist Management Page
+export interface WaitlistGuestInfo extends InvitationData {
+  // We can extend InvitationData or just use it directly.
+  // Adding specific fields if needed for the waitlist view.
+}
+export interface EventForSelector {
+    id: string;
+    name: string;
+    date: TimestampString;
 }

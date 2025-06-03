@@ -3,14 +3,14 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { fetchAdminDashboardData, triggerAiTabulation, exportGuestsToCsv, resendInvitations } from '../actions';
+import { fetchAdminDashboardData, triggerAiTabulation, exportGuestsToCsv, resendInvitations, triggerSendFeedbackRequestsAction } from '../actions';
 import type { InvitationData, RsvpStats, RsvpStatus, EventData } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock, PlusCircle, CalendarClock, EyeOff } from 'lucide-react';
+import { Download, MailWarning, BarChart3, Users, Activity, Send, CheckSquare, UserX, Clock, PlusCircle, CalendarClock, EyeOff, MessageSquareQuote, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from "@/components/ui/progress";
 import type { TabulateRsvpStatsOutput } from '@/ai/flows/tabulate-rsvps';
@@ -47,12 +47,14 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, descripti
 
 const rsvpChartConfig = {
   guests: { label: "Guests" }, 
-  Confirmed: { label: "Confirmed", color: "hsl(var(--chart-2))" }, // Greenish
-  Pending: { label: "Pending", color: "hsl(var(--chart-4))" }, // Bluish/Grayish
-  Declined: { label: "Declined", color: "hsl(var(--destructive))" }, // Reddish
-  Waitlisted: { label: "Waitlisted", color: "hsl(var(--chart-5))" }, // Orangish/Yellowish
-  ToRemindAI: { label: "To Remind (AI)", color: "hsl(var(--chart-1))" }, // Primary accent
+  Confirmed: { label: "Confirmed", color: "hsl(var(--chart-2))" }, 
+  Pending: { label: "Pending", color: "hsl(var(--chart-4))" }, 
+  Declined: { label: "Declined", color: "hsl(var(--destructive))" }, 
+  Waitlisted: { label: "Waitlisted", color: "hsl(var(--chart-5))" }, 
+  ToRemindAI: { label: "To Remind (AI)", color: "hsl(var(--chart-1))" }, 
 } satisfies RechartsPrimitive.ChartConfig;
+
+const BREVO_DAILY_LIMIT = 300;
 
 export default function DashboardClient() {
   const { user, loading: authLoading } = useAuth();
@@ -64,6 +66,7 @@ export default function DashboardClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [aiSummary, setAiSummary] = useState<TabulateRsvpStatsOutput | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isSendingFeedback, setIsSendingFeedback] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -78,7 +81,6 @@ export default function DashboardClient() {
       }
       setIsLoading(true);
       const data = await fetchAdminDashboardData(user.uid);
-      console.log('DashboardClient Invitations:', data.invitations);
       setCurrentEvent(data.event);
       setStats(data.stats);
       setInvitations(data.invitations);
@@ -98,8 +100,6 @@ export default function DashboardClient() {
       data.push({ category: "Waitlisted", guests: stats.waitlisted, fill: "var(--color-Waitlisted)" });
     }
     if (aiSummary && aiSummary.guestsToRemind.length > 0) {
-      // This assumes guestsToRemind is a separate category, not overlapping with pending.
-      // Adjust if AI summary provides a breakdown of pending guests who specifically need reminders.
       data.push({ category: "ToRemindAI", guests: aiSummary.guestsToRemind.length, fill: "var(--color-ToRemindAI)" });
     }
     return data;
@@ -136,7 +136,7 @@ export default function DashboardClient() {
         return;
     }
 
-    setIsAiLoading(true);
+    setIsAiLoading(true); // Can reuse isAiLoading or have a specific one
     const result = await resendInvitations(guestsToRemindTokens); 
     toast({ title: result.success ? "Success" : "Error", description: result.message, variant: result.success ? "default" : "destructive"});
     setIsAiLoading(false);
@@ -165,6 +165,34 @@ export default function DashboardClient() {
       toast({ title: "CSV Export Error", description: result.error, variant: "destructive" });
     }
   };
+
+  const handleSendFeedbackRequests = async () => {
+    if (!currentEvent) {
+        toast({ title: "No Event Loaded", description: "Please select an event first.", variant: "destructive" });
+        return;
+    }
+    if (!stats || stats.confirmed === 0) {
+        toast({ title: "No Confirmed Guests", description: "There are no confirmed guests for this event to send feedback requests to.", variant: "default" });
+        return;
+    }
+
+    setIsSendingFeedback(true);
+    const result = await triggerSendFeedbackRequestsAction(currentEvent.id);
+    if (result.success) {
+        toast({
+            title: "Feedback Requests Processed",
+            description: result.message,
+            duration: 10000, // Show longer for detailed message
+        });
+    } else {
+        toast({
+            title: "Error Sending Feedback Requests",
+            description: result.message,
+            variant: "destructive",
+        });
+    }
+    setIsSendingFeedback(false);
+  };
   
   if (isLoading || authLoading) {
     return (
@@ -178,17 +206,17 @@ export default function DashboardClient() {
   
   const getBadgeVariant = (status: RsvpStatus): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
-      case 'confirmed': return 'default'; // Will be styled by getBadgeClassName
+      case 'confirmed': return 'default'; 
       case 'declining': return 'destructive';
       case 'pending': return 'secondary';
-      case 'waitlisted': return 'outline'; // Will be styled by getBadgeClassName
+      case 'waitlisted': return 'outline'; 
       default: return 'secondary';
     }
   };
    const getBadgeClassName = (status: RsvpStatus) => {
     switch (status) {
       case 'confirmed': return 'bg-green-500 hover:bg-green-600 text-white';
-      case 'declining': return ''; // Uses default destructive variant
+      case 'declining': return ''; 
       case 'pending': return 'bg-gray-400 hover:bg-gray-500 text-white';
       case 'waitlisted': return 'bg-yellow-500 hover:bg-yellow-600 text-black border-yellow-600';
       default: return '';
@@ -245,7 +273,7 @@ export default function DashboardClient() {
             <StatCard title="Waitlisted" value={stats.waitlisted} icon={Clock} description="Guests on the waitlist." className="bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700"/>
           </div>
 
-          {stats.totalSeats > 0 && ( // Show capacity only if there's a defined seat limit
+          {stats.totalSeats > 0 && ( 
             <Card className="shadow-lg">
               <CardHeader>
                 <CardTitle>Event Capacity</CardTitle>
@@ -335,15 +363,36 @@ export default function DashboardClient() {
           
           <Card className="shadow-lg">
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle>Guest List</CardTitle>
-                <Button onClick={handleExportCsv} variant="outline" size="sm" disabled={!currentEvent}>
-                  <Download className="mr-2 h-4 w-4" /> Export CSV
-                </Button>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div>
+                    <CardTitle>Guest List</CardTitle>
+                    <CardDescription>Overview of all invited guests and their RSVP status for the current event.</CardDescription>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <Button 
+                        onClick={handleSendFeedbackRequests} 
+                        variant="outline" 
+                        size="sm" 
+                        disabled={!currentEvent || !stats || stats.confirmed === 0 || isSendingFeedback}
+                        className="w-full sm:w-auto"
+                    >
+                      <MessageSquareQuote className="mr-2 h-4 w-4" /> 
+                      {isSendingFeedback ? 'Sending Feedback Requests...' : `Send Feedback Requests (${stats?.confirmed || 0} confirmed)`}
+                    </Button>
+                    <Button onClick={handleExportCsv} variant="outline" size="sm" disabled={!currentEvent} className="w-full sm:w-auto">
+                        <Download className="mr-2 h-4 w-4" /> Export CSV
+                    </Button>
+                </div>
               </div>
-              <CardDescription>Overview of all invited guests and their RSVP status for the current event.</CardDescription>
             </CardHeader>
             <CardContent>
+              <Alert variant="default" className="mb-4 border-amber-500 bg-amber-50 dark:bg-amber-900/30">
+                <Info className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <AlertTitle className="text-amber-700 dark:text-amber-300">Email Sending Notice</AlertTitle>
+                <AlertDescription className="text-sm text-amber-600 dark:text-amber-400">
+                    Actions like sending feedback requests trigger emails. Current demo uses Brevo's free tier (limited to {BREVO_DAILY_LIMIT} emails/day). For large events, a proper queuing system is needed.
+                </AlertDescription>
+              </Alert>
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -389,11 +438,10 @@ export default function DashboardClient() {
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Developer Notes / TODOs</CardTitle></CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-1">
-            <p>• <strong>Firestore Setup:</strong> Ensure Firebase Admin SDK is configured. Composite indexes might be needed (check server logs for links).</p>
-            <p>• <strong>Authentication:</strong> Admin dashboard is now user-specific. Google Sign-In still pending full client-side token handling.</p>
-            <p>• <strong>Public RSVP Form:</strong> Logic enhanced for public RSVPs, confirmation/waitlist emails are sent.</p>
-            <p>• <strong>Image Storage:</strong> Image upload implemented; ensure Firebase Storage rules are set.</p>
-            <p>• <strong>Waitlist Management:</strong> Admin tools to accept/decline from waitlist are a future step.</p>
+            <p>• <strong>Firestore Setup:</strong> Ensure Firebase Admin SDK is configured. Composite indexes might be needed (check server logs for links). Events, Invitations, and Feedback collections have specific index requirements mentioned in `db.ts` comments.</p>
+            <p>• <strong>Email Queueing:</strong> Critical for >300 guests. Current implementation sends emails sequentially for demo; production requires Cloud Tasks/PubSub.</p>
+            <p>• <strong>Feedback System:</strong> Basic feedback form & storage in place. Feedback summary for AI needs robust implementation.</p>
+            <p>• <strong>Waitlist Management:</strong> UI and basic accept/decline logic implemented. Emails are sent.</p>
         </CardContent>
       </Card>
     </div>
