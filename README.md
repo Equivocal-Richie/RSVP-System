@@ -184,6 +184,7 @@ The system is designed with modularity in mind:
 
 *   **Author**: Richard Muchoki
 *   **Contact**: mrichardmuchoki@gmail.com
+*   <a href="https://richardmuchoki.vercel.app/">Portfolio Website</a>
 
 ## License
 
